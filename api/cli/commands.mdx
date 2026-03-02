@@ -1,0 +1,528 @@
+---
+title: 'CLI commands'
+description: 'Complete reference for Avail node CLI commands and subcommands'
+keywords: ['avail', 'cli', 'commands', 'node', 'blockchain']
+---
+
+The Avail node binary provides a comprehensive set of commands for running, managing, and interacting with your blockchain node.
+
+## Running the node
+
+By default, running the node without any subcommand starts the node in normal mode:
+
+```bash
+avail-node [OPTIONS]
+```
+
+See the [Flags reference](/api/cli/flags) for all available options.
+
+## Commands overview
+
+All commands are invoked using the following pattern:
+
+```bash
+avail-node <COMMAND> [OPTIONS]
+```
+
+<CardGroup cols={2}>
+  <Card title="benchmark" icon="gauge-high" href="#benchmark">
+    Performance benchmarking utilities
+  </Card>
+  <Card title="try-runtime" icon="flask" href="#try-runtime">
+    Test commands against runtime state
+  </Card>
+  <Card title="key" icon="key" href="#key">
+    Key management and generation
+  </Card>
+  <Card title="verify" icon="check-circle" href="#verify">
+    Verify message signatures
+  </Card>
+  <Card title="vanity" icon="sparkles" href="#vanity">
+    Generate vanity addresses
+  </Card>
+  <Card title="sign" icon="signature" href="#sign">
+    Sign messages with keys
+  </Card>
+  <Card title="build-spec" icon="file-code" href="#build-spec">
+    Build chain specifications
+  </Card>
+  <Card title="check-block" icon="magnifying-glass" href="#check-block">
+    Validate block integrity
+  </Card>
+  <Card title="export-blocks" icon="upload" href="#export-blocks">
+    Export blockchain data
+  </Card>
+  <Card title="export-state" icon="database" href="#export-state">
+    Export state snapshots
+  </Card>
+  <Card title="import-blocks" icon="download" href="#import-blocks">
+    Import blockchain data
+  </Card>
+  <Card title="purge-chain" icon="trash" href="#purge-chain">
+    Remove chain data
+  </Card>
+  <Card title="revert" icon="rotate-left" href="#revert">
+    Revert to previous state
+  </Card>
+  <Card title="chain-info" icon="circle-info" href="#chain-info">
+    Display database information
+  </Card>
+</CardGroup>
+
+---
+
+## benchmark
+
+Sub-commands for performance benchmarking. The pallet benchmarking functionality is available under the `pallet` sub-command.
+
+```bash
+avail-node benchmark <SUBCOMMAND>
+```
+
+<Info>
+Benchmarking commands are primarily used during development and testing to measure the performance characteristics of pallets and runtime components.
+</Info>
+
+### Common benchmark subcommands
+
+The `benchmark` command includes several subcommands:
+
+- `pallet` - Benchmark pallet execution times
+- `storage` - Benchmark storage operations
+- `overhead` - Benchmark block and extrinsic overhead
+- `block` - Benchmark block execution
+- `machine` - Benchmark hardware capabilities
+
+### Example
+
+```bash
+# Benchmark a specific pallet
+avail-node benchmark pallet --pallet pallet_balances --extrinsic transfer
+
+# Run machine benchmarks
+avail-node benchmark machine
+```
+
+---
+
+## try-runtime
+
+Execute commands against runtime state for testing and debugging purposes.
+
+```bash
+avail-node try-runtime <SUBCOMMAND>
+```
+
+<Warning>
+The `try-runtime` feature must be enabled at compile time. If not enabled, this command will not be available.
+</Warning>
+
+### Use cases
+
+- Testing runtime upgrades before deployment
+- Debugging runtime behavior
+- Validating state migrations
+- Simulating transactions
+
+### Example
+
+```bash
+# Test runtime upgrade
+avail-node try-runtime on-runtime-upgrade live --uri wss://rpc.example.com
+```
+
+---
+
+## key
+
+Key management utilities for generating, inspecting, and managing cryptographic keys.
+
+```bash
+avail-node key <SUBCOMMAND>
+```
+
+### Subcommands
+
+#### generate
+
+Generate a new secret key and output the corresponding public key and account ID.
+
+```bash
+avail-node key generate
+```
+
+**Example output:**
+```
+Secret phrase:       daughter song common combine misery cotton audit morning stuff weasel flee field
+Network ID:          substrate
+Secret seed:         0x3c881bc4d45926680c64a7f9315eeda3dd287f8d598f3653d7c107799c5422b3
+Public key (hex):    0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+Account ID:          0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+Public key (SS58):   5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+SS58 Address:        5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+```
+
+#### inspect
+
+Inspect a secret URI and display the associated public key and account ID.
+
+```bash
+avail-node key inspect "your-secret-phrase"
+```
+
+#### insert
+
+Insert a key into the keystore.
+
+```bash
+avail-node key insert --key-type gran --suri "your-secret-phrase"
+```
+
+#### inspect-key
+
+Inspect a key in the keystore.
+
+```bash
+avail-node key inspect-key
+```
+
+### Common options
+
+- `--scheme` - Cryptographic scheme (Sr25519, Ed25519, Ecdsa)
+- `--network` - Network address format
+- `--output-type` - Output format (Json, Text)
+
+---
+
+## verify
+
+Verify a signature for a message provided on STDIN with a given public or secret key.
+
+```bash
+avail-node verify <PUBLIC_KEY> <SIGNATURE>
+```
+
+### Example
+
+```bash
+echo "Hello, Avail!" | avail-node verify 0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d 0x...
+```
+
+<Info>
+The message is read from standard input (STDIN), while the public key and signature are provided as arguments.
+</Info>
+
+---
+
+## vanity
+
+Generate a seed that produces a vanity address matching a specific pattern.
+
+```bash
+avail-node vanity <PATTERN>
+```
+
+### Example
+
+```bash
+# Generate address starting with "5Avail"
+avail-node vanity 5Avail
+```
+
+**Example output:**
+```
+Searching for pattern: 5Avail
+Found match after 42357 attempts
+Secret phrase:       abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
+Public key (SS58):   5AvaiLxyz...
+```
+
+<Warning>
+Generating vanity addresses can be computationally expensive. Longer patterns take exponentially more time to find.
+</Warning>
+
+---
+
+## sign
+
+Sign a message with a given secret key.
+
+```bash
+avail-node sign <SECRET_KEY>
+```
+
+### Example
+
+```bash
+echo "Hello, Avail!" | avail-node sign "your-secret-phrase"
+```
+
+**Output:**
+```
+0x1234567890abcdef... (signature)
+```
+
+<Info>
+The message is read from standard input (STDIN). The signature is output to STDOUT.
+</Info>
+
+---
+
+## build-spec
+
+Build and export a chain specification file.
+
+```bash
+avail-node build-spec [OPTIONS]
+```
+
+### Common options
+
+- `--chain <CHAIN_SPEC>` - Source chain specification
+- `--raw` - Output as raw (runtime-compatible) format
+- `--disable-default-bootnode` - Disable default bootnodes
+
+### Examples
+
+```bash
+# Export chain spec in JSON format
+avail-node build-spec --chain dev > chain-spec.json
+
+# Export raw chain spec for runtime
+avail-node build-spec --chain dev --raw > chain-spec-raw.json
+```
+
+<Info>
+Raw chain specs are required for production networks. They contain the compiled runtime and cannot be easily modified.
+</Info>
+
+---
+
+## check-block
+
+Validate blocks from the database or imported from files.
+
+```bash
+avail-node check-block [OPTIONS]
+```
+
+### Options
+
+- `--block-hash <HASH>` - Block hash to check
+- `--default-heap-pages <COUNT>` - Default heap pages for Wasm execution
+
+### Example
+
+```bash
+avail-node check-block --block-hash 0x1234...
+```
+
+---
+
+## export-blocks
+
+Export blocks to a file.
+
+```bash
+avail-node export-blocks [OPTIONS] <OUTPUT_FILE>
+```
+
+### Options
+
+- `--from <BLOCK>` - Starting block number (default: 1)
+- `--to <BLOCK>` - Ending block number
+- `--binary` - Export in binary format instead of JSON
+
+### Examples
+
+```bash
+# Export all blocks
+avail-node export-blocks blocks.dat
+
+# Export specific range
+avail-node export-blocks --from 1000 --to 2000 blocks-1k-2k.dat
+
+# Export in JSON format
+avail-node export-blocks --json blocks.json
+```
+
+---
+
+## export-state
+
+Export the state of a given block into a chain specification.
+
+```bash
+avail-node export-state [OPTIONS]
+```
+
+### Options
+
+- `--block <BLOCK>` - Block hash or number to export state from
+- `--chain <CHAIN_SPEC>` - Source chain specification
+
+### Example
+
+```bash
+# Export state at specific block
+avail-node export-state --block 1000 > state-at-1000.json
+
+# Export latest finalized state
+avail-node export-state > latest-state.json
+```
+
+<Info>
+Exported state can be used to bootstrap new networks or create fork chains for testing.
+</Info>
+
+---
+
+## import-blocks
+
+Import blocks from a file.
+
+```bash
+avail-node import-blocks [OPTIONS] <INPUT_FILE>
+```
+
+### Options
+
+- `--default-heap-pages <COUNT>` - Default heap pages for Wasm execution
+- `--execution <STRATEGY>` - Execution strategy for block import
+- `--binary` - Import binary format instead of JSON
+
+### Example
+
+```bash
+# Import blocks from file
+avail-node import-blocks blocks.dat
+
+# Import with specific execution strategy
+avail-node import-blocks --execution wasm blocks.dat
+```
+
+---
+
+## purge-chain
+
+Remove the entire chain database.
+
+```bash
+avail-node purge-chain [OPTIONS]
+```
+
+### Options
+
+- `--chain <CHAIN_SPEC>` - Chain specification
+- `--base-path <PATH>` - Base path for chain data
+- `-y` - Skip confirmation prompt
+
+### Example
+
+```bash
+# Purge chain with confirmation
+avail-node purge-chain --chain dev
+
+# Purge without confirmation (dangerous!)
+avail-node purge-chain --chain dev -y
+```
+
+<Danger>
+This command permanently deletes all blockchain data including blocks, state, and keys. This action cannot be undone. Always ensure you have backups before running this command.
+</Danger>
+
+---
+
+## revert
+
+Revert the chain to a previous state by removing recent blocks.
+
+```bash
+avail-node revert [OPTIONS]
+```
+
+### Options
+
+- `--num <BLOCKS>` - Number of blocks to revert (default: 256)
+
+### Example
+
+```bash
+# Revert last 256 blocks (default)
+avail-node revert
+
+# Revert last 100 blocks
+avail-node revert --num 100
+```
+
+<Warning>
+Reverting blocks can cause your node to fall out of sync with the network. Only use this for local development or testing.
+</Warning>
+
+---
+
+## chain-info
+
+Display database metadata and column information.
+
+```bash
+avail-node chain-info [OPTIONS]
+```
+
+### Example
+
+```bash
+avail-node chain-info --chain dev
+```
+
+**Example output:**
+```
+Database: ParityDB
+Path: /home/user/.local/share/avail-node/chains/dev/paritydb/full
+
+Columns:
+- header: 1234 items
+- body: 1234 items
+- transaction: 5678 items
+```
+
+---
+
+## Help and version
+
+### Get help
+
+Display help information for any command:
+
+```bash
+# General help
+avail-node help
+
+# Help for specific command
+avail-node help benchmark
+
+# Short help summary
+avail-node -h
+```
+
+### Check version
+
+```bash
+avail-node --version
+```
+
+**Example output:**
+```
+avail-node 1.8.0-x86_64-linux-gnu
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Flags reference" icon="flag" href="/api/cli/flags">
+    Complete list of CLI flags and options
+  </Card>
+  <Card title="Running a node" icon="server" href="/operate/node/run">
+    Learn how to run an Avail node
+  </Card>
+</CardGroup>

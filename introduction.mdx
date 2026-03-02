@@ -1,0 +1,102 @@
+---
+title: Introduction to Avail
+description: Official client for the Avail blockchain - a modular data availability network
+---
+
+<img
+  src="https://raw.githubusercontent.com/availproject/avail/main/.github/img/terminal.jpg"
+  alt="Avail Node"
+/>
+
+## What is Avail?
+
+Avail Node is the official client implementation for the Avail blockchain, a modular blockchain focused on data availability. Built with Rust and the Substrate framework, Avail provides a robust infrastructure for scaling blockchain applications through data availability guarantees.
+
+The node enables you to participate in the Avail network as a validator, full node operator, or archive node, supporting the network's consensus and data availability mechanisms.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Substrate-based" icon="cubes">
+    Built on Polkadot's Substrate framework for modular blockchain development
+  </Card>
+  <Card title="BABE + GRANDPA consensus" icon="handshake">
+    Uses hybrid consensus with BABE for block production and GRANDPA for finality
+  </Card>
+  <Card title="Kate RPC" icon="network-wired">
+    Custom RPC endpoints for data availability queries and proofs
+  </Card>
+  <Card title="Multiple networks" icon="globe">
+    Connect to mainnet, testnet (Turing), or run a development chain
+  </Card>
+</CardGroup>
+
+## Supported networks
+
+Avail Node supports multiple network configurations:
+
+- **Mainnet** - Production network for Avail blockchain
+- **Turing** - Public testnet for development and testing
+- **Development** - Local development chain for rapid iteration
+
+## Architecture
+
+The Avail Node implementation consists of several key components:
+
+- **Runtime** - Core blockchain logic and state transition function
+- **Consensus** - BABE and GRANDPA implementations for block production and finality
+- **Networking** - libp2p-based P2P networking layer
+- **RPC layer** - JSON-RPC server for client interactions
+- **Kate** - Data availability sampling and proof generation
+- **Pallets** - Modular components including DA control, mandate, vector, and staking
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get a node running in minutes with Docker or from source
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions for building from source
+  </Card>
+  <Card title="SDK documentation" icon="code" href="https://github.com/availproject/avail-js">
+    Interact with Avail using JavaScript, Rust, or Go SDKs
+  </Card>
+  <Card title="Wiki" icon="book" href="https://github.com/availproject/avail/wiki">
+    Learn about advanced topics like benchmarking and synchronization
+  </Card>
+</CardGroup>
+
+## Software development kits
+
+Interact with the Avail blockchain using official SDKs:
+
+- [avail-js](https://github.com/availproject/avail-js) - JavaScript/TypeScript SDK
+- [avail-rust](https://github.com/availproject/avail-rust) - Rust SDK
+- [avail-go](https://github.com/availproject/avail-go-sdk) - Go SDK
+
+## Default ports
+
+The Avail Node exposes several ports for different services:
+
+| Port | Service | Description |
+|------|---------|-------------|
+| 9944 | RPC/WebSocket | JSON-RPC and WebSocket API endpoint |
+| 30333 | P2P | Peer-to-peer networking |
+| 9615 | Prometheus | Metrics exporter endpoint |
+
+<Note>
+  The default ports can be customized using command-line flags when starting the node.
+</Note>
+
+## Community and support
+
+Avail is an open-source project licensed under Apache 2.0 and GPL-3.0:
+
+- GitHub: [availproject/avail](https://github.com/availproject/avail)
+- Website: [availproject.org](https://www.availproject.org/)
+- Email: info@availproject.org
+
+<Warning>
+  When exposing RPC endpoints publicly, use `--rpc-methods=safe` or implement an RPC proxy to filter dangerous methods. See the [Substrate RPC documentation](https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs) for details.
+</Warning>

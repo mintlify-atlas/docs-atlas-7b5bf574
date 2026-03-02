@@ -1,0 +1,274 @@
+---
+title: Building from Source
+description: Compile the Avail node from source code
+---
+
+This guide covers building the Avail blockchain node from source code using Rust and Cargo.
+
+## Prerequisites
+
+### System Dependencies
+
+Before building Avail, ensure you have the required system packages installed:
+
+<CodeGroup>
+```bash Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config libssl-dev \
+  git clang curl protobuf-compiler
+```
+
+```bash Fedora
+sudo dnf install -y gcc gcc-c++ make openssl-devel \
+  git clang curl protobuf-compiler
+```
+
+```bash macOS
+brew install openssl protobuf
+```
+</CodeGroup>
+
+### Rust Toolchain
+
+Avail requires a specific Rust version as defined in `rust-toolchain.toml`.
+
+<Steps>
+  <Step title="Install Rust">
+    Install Rust using rustup:
+    ```bash
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    source "$HOME/.cargo/env"
+    ```
+  </Step>
+
+  <Step title="Verify Installation">
+    The project uses Rust **1.82.0** with the following components:
+    - `rustfmt` - Code formatting
+    - `clippy` - Linting
+    - `rust-src` - Source code for the standard library
+    - `wasm32-unknown-unknown` target - WebAssembly compilation
+
+    When you run cargo commands, rustup will automatically install the correct toolchain based on `rust-toolchain.toml`:
+    ```bash
+    rustup show
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Avail is built on the Substrate framework and uses Polkadot SDK version **polkadot-1.7.1-patch-13**.
+</Note>
+
+## Building the Node
+
+### Development Build
+
+For development and testing, build without optimizations:
+
+```bash
+cargo build
+```
+
+The binary will be located at `target/debug/avail-node`.
+
+### Release Build
+
+<Warning>
+  Release builds take significantly longer but produce optimized binaries for production use.
+</Warning>
+
+Build an optimized production binary:
+
+```bash
+cargo build --release --locked
+```
+
+The `--locked` flag ensures dependencies match `Cargo.lock` exactly. The binary will be at `target/release/avail-node`.
+
+<Steps>
+  <Step title="Start the Build">
+    ```bash
+    cargo build --release --locked
+    ```
+    
+    This process typically takes 20-40 minutes depending on your hardware.
+  </Step>
+
+  <Step title="Verify the Binary">
+    ```bash
+    ./target/release/avail-node --version
+    ```
+  </Step>
+
+  <Step title="Run the Node">
+    ```bash
+    mkdir -p output
+    ./target/release/avail-node --chain mainnet -d ./output
+    ```
+  </Step>
+</Steps>
+
+### Building Specific Packages
+
+Build only the node binary without workspace dependencies:
+
+```bash
+cargo build --release -p avail-node
+```
+
+## Build Features
+
+Avail supports several conditional compilation features:
+
+### Runtime Benchmarks
+
+Enable runtime benchmarking capabilities:
+
+```bash
+cargo build --release --features runtime-benchmarks
+```
+
+### Try Runtime
+
+Enable the try-runtime feature for testing runtime migrations:
+
+```bash
+cargo build --release --features try-runtime
+```
+
+### Fast Runtime
+
+For development and testing, use a faster block time:
+
+```bash
+cargo build --release --features fast-runtime
+```
+
+<Note>
+  The `fast-runtime` feature is required when running E2E tests.
+</Note>
+
+### Combined Features
+
+Build with multiple features:
+
+```bash
+cargo build --release --features "runtime-benchmarks try-runtime"
+```
+
+## Build Optimization
+
+### Using sccache
+
+Speed up rebuilds by caching compilation artifacts with sccache:
+
+```bash
+cargo install sccache
+export RUSTC_WRAPPER=sccache
+cargo build --release
+```
+
+Check cache statistics:
+```bash
+sccache --show-stats
+```
+
+### Skipping WASM Build
+
+For faster iteration during development, skip WebAssembly runtime compilation:
+
+```bash
+export SKIP_WASM_BUILD=true
+cargo build
+```
+
+<Warning>
+  Skipping WASM build creates an incomplete binary. Only use this for compilation checks, not for running the node.
+</Warning>
+
+## Workspace Structure
+
+The Avail repository is organized as a Cargo workspace with these key members:
+
+- **`node/`** - Node implementation and CLI
+- **`runtime/`** - Blockchain runtime logic
+- **`pallets/`** - Custom pallets (dactr, mandate, system, vector)
+- **`base/`** - Core primitives and utilities
+- **`client/basic-authorship/`** - Block authorship
+- **`rpc/`** - RPC implementations (kate-rpc, testing-rpc)
+- **`e2e/`** - End-to-end tests
+
+## Build Profiles
+
+### Development Profile
+
+The development profile includes optimizations for cryptographic dependencies:
+
+```toml
+[profile.dev.package]
+blake2 = { opt-level = 3 }
+ed25519-dalek = { opt-level = 3 }
+# ... and many more crypto libraries
+```
+
+This significantly improves development build performance.
+
+### Release Profile
+
+Release builds use:
+- **Panic strategy**: `unwind` (required by Substrate runtime)
+- **Optimization level**: 3 (maximum)
+- **LTO**: Disabled by default (can be enabled for smaller binaries)
+
+## Troubleshooting
+
+### Linker Errors
+
+If you encounter linker errors, ensure you have the required development packages:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install build-essential
+
+# macOS - install Xcode Command Line Tools
+xcode-select --install
+```
+
+### Out of Memory
+
+If compilation fails due to memory constraints, limit parallel jobs:
+
+```bash
+cargo build --release -j 2
+```
+
+### Protobuf Errors
+
+Ensure protobuf compiler is installed:
+
+```bash
+protoc --version
+```
+
+If missing, install it as shown in the prerequisites.
+
+### OpenSSL Errors
+
+On some systems, you may need to explicitly set OpenSSL paths:
+
+```bash
+export OPENSSL_DIR=/usr/local/opt/openssl
+export PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+cargo build --release
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Tests" icon="flask" href="/development/testing">
+    Learn how to run unit, integration, and E2E tests
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Guidelines for contributing to Avail
+  </Card>
+</CardGroup>

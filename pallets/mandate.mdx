@@ -1,0 +1,441 @@
+---
+title: 'Mandate Pallet'
+description: 'Governance mechanism for executing privileged operations'
+---
+
+The Mandate pallet provides a simple governance mechanism that allows approved origins to execute privileged (root-level) operations on the Avail blockchain.
+
+## Overview
+
+Mandate enables:
+- Execution of root-level calls from approved governance origins
+- Bypassing of normal transaction filters for privileged operations
+- Fee-free execution for governance-approved actions
+- Transparent logging of all root operations
+
+<Note>
+  The Mandate pallet is similar to Substrate's Sudo pallet but uses a configurable `ApprovedOrigin` instead of a single sudo key, enabling more flexible governance models.
+</Note>
+
+## Architecture
+
+The pallet acts as a wrapper that:
+1. Verifies the origin is approved (e.g., collective, council, democracy)
+2. Dispatches the call with root privileges
+3. Bypasses transaction filters
+4. Emits an event with the execution result
+5. Returns no fees to the caller
+
+```rust
+#[pallet::pallet]
+pub struct Pallet<T>(_);
+
+#[pallet::config]
+pub trait Config: frame_system::Config {
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    type RuntimeCall: Parameter + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin> + GetDispatchInfo;
+    type WeightInfo: WeightInfo;
+    type ApprovedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+}
+```
+
+## Extrinsics
+
+### mandate
+
+Executes a call with root privileges if the origin is approved.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must satisfy the `ApprovedOrigin` requirement (e.g., Council, TechnicalCommittee, Democracy)
+</ParamField>
+
+<ParamField path="call" type="Box<RuntimeCall>" required>
+  The call to execute with root privileges
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+use frame_support::traits::Get;
+
+// Example: Execute a runtime upgrade
+let upgrade_call = RuntimeCall::System(SystemCall::set_code { code });
+let mandate_call = Call::mandate { 
+    call: Box::new(upgrade_call) 
+};
+mandate_call.dispatch(council_origin)?;
+
+// Example: Update configuration
+let config_call = RuntimeCall::DataAvailability(
+    DataAvailabilityCall::set_submit_data_fee_modifier { modifier }
+);
+let mandate_call = Call::mandate { 
+    call: Box::new(config_call) 
+};
+mandate_call.dispatch(approved_origin)?;
+```
+
+```typescript TypeScript
+// Execute via governance (council example)
+const proposal = api.tx.system.setCode(newCode);
+const mandateCall = api.tx.mandate.mandate(proposal);
+
+// Submit as council motion
+await api.tx.council
+  .propose(
+    threshold,
+    mandateCall,
+    mandateCall.encodedLength
+  )
+  .signAndSend(councilMember);
+
+// Or execute directly if origin is configured for single account
+await api.tx.mandate
+  .mandate(proposal)
+  .signAndSend(approvedAccount);
+```
+</CodeGroup>
+
+**Execution Flow:**
+
+```rust
+pub fn mandate(
+    origin: OriginFor<T>,
+    call: Box<<T as Config>::RuntimeCall>,
+) -> DispatchResultWithPostInfo {
+    // 1. Verify origin is approved
+    T::ApprovedOrigin::ensure_origin(origin)?;
+
+    // 2. Execute with root privileges, bypassing filters
+    let res = call.dispatch_bypass_filter(frame_system::RawOrigin::Root.into());
+    
+    // 3. Emit event with result
+    Self::deposit_event(Event::RootOp {
+        result: res.map(|_| ()).map_err(|e| e.error),
+    });
+
+    // 4. No fee charged
+    Ok(Pays::No.into())
+}
+```
+
+**Weight Calculation:**
+
+The weight of `mandate` is the base mandate weight plus the weight of the wrapped call:
+
+```rust
+#[pallet::weight({
+    let dispatch_info = call.get_dispatch_info();
+    (
+        T::WeightInfo::mandate().saturating_add(dispatch_info.weight),
+        dispatch_info.class
+    )
+})]
+```
+
+**Return Value:**
+
+- `Ok(Pays::No.into())` - Execution completed (check event for success/failure), no fee charged
+
+**Events:**
+- `RootOp { result }` - Emitted after execution with Ok(()) or Err(error)
+
+**Errors:**
+- `BadOrigin` - Origin does not satisfy `ApprovedOrigin` requirement
+- Propagates any errors from the wrapped call (logged in event, not returned)
+
+## Events
+
+<ResponseField name="RootOp">
+  <ParamField name="result" type="DispatchResult">
+    The result of the root operation: `Ok(())` if successful, or `Err(DispatchError)` if failed
+  </ParamField>
+</ResponseField>
+
+**Event Structure:**
+
+```rust
+#[pallet::event]
+#[pallet::generate_deposit(pub(super) fn deposit_event)]
+pub enum Event<T: Config> {
+    /// A root operation was executed, show result
+    RootOp { result: DispatchResult },
+}
+```
+
+Monitoring the `RootOp` event allows external systems to track:
+- Which root operations were attempted
+- Whether they succeeded or failed
+- What errors occurred (if any)
+
+## Configuration
+
+```rust
+#[pallet::config]
+pub trait Config: frame_system::Config {
+    /// The overarching event type
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+    /// A sudo-able call (any dispatchable)
+    type RuntimeCall: Parameter
+        + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin>
+        + GetDispatchInfo;
+
+    /// Weight information for extrinsics
+    type WeightInfo: WeightInfo;
+
+    /// Origin that can execute mandate (e.g., Council, TechnicalCommittee, EnsureRoot)
+    type ApprovedOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+}
+```
+
+### ApprovedOrigin Examples
+
+**Single Root Account:**
+```rust
+type ApprovedOrigin = EnsureRoot<AccountId>;
+```
+
+**Council Majority:**
+```rust
+type ApprovedOrigin = EnsureOneOf<
+    EnsureRoot<AccountId>,
+    pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>
+>;
+```
+
+**Technical Committee:**
+```rust
+type ApprovedOrigin = EnsureOneOf<
+    EnsureRoot<AccountId>,
+    pallet_collective::EnsureProportionAtLeast<AccountId, TechnicalCollective, 2, 3>
+>;
+```
+
+**Democracy:**
+```rust
+type ApprovedOrigin = EnsureOneOf<
+    EnsureRoot<AccountId>,
+    pallet_democracy::EnsureReferendumPassed
+>;
+```
+
+## Usage Examples
+
+### Runtime Upgrade
+
+```rust
+// Prepare the new runtime WASM code
+let new_code: Vec<u8> = include_bytes!("../runtime.wasm").to_vec();
+
+// Create the set_code call
+let upgrade = RuntimeCall::System(SystemCall::set_code {
+    code: new_code,
+});
+
+// Execute via mandate
+Mandate::mandate(council_origin, Box::new(upgrade))?;
+
+// Monitor event:
+// RootOp { result: Ok(()) }
+```
+
+### Update Protocol Parameters
+
+```rust
+// Update block dimensions
+let update_dimensions = RuntimeCall::DataAvailability(
+    DataAvailabilityCall::submit_block_length_proposal {
+        rows: 512,
+        cols: 512,
+    }
+);
+
+Mandate::mandate(approved_origin, Box::new(update_dimensions))?;
+
+// Update fee modifier
+let update_fees = RuntimeCall::DataAvailability(
+    DataAvailabilityCall::set_submit_data_fee_modifier {
+        modifier: DispatchFeeModifier::new(/* ... */),
+    }
+);
+
+Mandate::mandate(approved_origin, Box::new(update_fees))?;
+```
+
+### Vector Bridge Configuration
+
+```rust
+// Update whitelisted domains
+let domains = BoundedVec::try_from(vec![1u32, 10u32, 137u32])?; // Ethereum, Optimism, Polygon
+let update_domains = RuntimeCall::Vector(
+    VectorCall::set_whitelisted_domains { value: domains }
+);
+
+Mandate::mandate(approved_origin, Box::new(update_domains))?;
+
+// Set broadcaster address
+let set_broadcaster = RuntimeCall::Vector(
+    VectorCall::set_broadcaster {
+        broadcaster_domain: 1,
+        broadcaster: H256::from_slice(&broadcaster_address),
+    }
+);
+
+Mandate::mandate(approved_origin, Box::new(set_broadcaster))?;
+```
+
+### Emergency Actions
+
+```rust
+// Freeze a source chain (emergency)
+let freeze_chain = RuntimeCall::Vector(
+    VectorCall::source_chain_froze {
+        source_chain_id: 1,
+        frozen: true,
+    }
+);
+
+Mandate::mandate(emergency_origin, Box::new(freeze_chain))?;
+```
+
+### Batch Operations
+
+```rust
+use pallet_utility::Call as UtilityCall;
+
+// Execute multiple calls atomically
+let calls = vec![
+    RuntimeCall::DataAvailability(/* ... */),
+    RuntimeCall::Vector(/* ... */),
+    RuntimeCall::System(/* ... */),
+];
+
+let batch = RuntimeCall::Utility(
+    UtilityCall::batch_all { calls }
+);
+
+Mandate::mandate(approved_origin, Box::new(batch))?;
+```
+
+## Governance Integration
+
+### Council Proposal
+
+```typescript
+// TypeScript example using Polkadot.js
+const proposal = api.tx.dataAvailability.submitBlockLengthProposal(512, 512);
+const mandateCall = api.tx.mandate.mandate(proposal);
+
+// Council member proposes
+const proposalHash = mandateCall.method.hash;
+const threshold = 3; // 3 out of 5 council members
+
+await api.tx.council
+  .propose(threshold, mandateCall, mandateCall.encodedLength)
+  .signAndSend(councilMember);
+
+// Other council members vote
+await api.tx.council.vote(proposalHash, proposalIndex, true).signAndSend(member2);
+await api.tx.council.vote(proposalHash, proposalIndex, true).signAndSend(member3);
+
+// Execute when threshold reached
+await api.tx.council
+  .close(proposalHash, proposalIndex, refTime, lengthBound)
+  .signAndSend(anyAccount);
+```
+
+### Democracy Referendum
+
+```typescript
+// Submit via democracy
+const proposal = api.tx.dataAvailability.setSubmitDataFeeModifier(modifier);
+const mandateCall = api.tx.mandate.mandate(proposal);
+
+// Propose referendum
+await api.tx.democracy
+  .propose(mandateCall, depositAmount)
+  .signAndSend(proposer);
+
+// After referendum passes, execute
+await api.tx.democracy
+  .enactProposal(proposalHash, referendumIndex)
+  .signAndSend(anyAccount);
+```
+
+## Security Considerations
+
+<Warning>
+  The Mandate pallet grants **full root access** to the blockchain. Proper configuration of `ApprovedOrigin` is critical.
+</Warning>
+
+**Best Practices:**
+
+1. **Multi-signature Governance**: Use collective pallets (Council, TechnicalCommittee) with threshold requirements
+
+2. **Time Delays**: Consider integrating with `pallet_scheduler` for delayed execution:
+   ```rust
+   let delayed_call = RuntimeCall::Scheduler(
+       SchedulerCall::schedule {
+           when: current_block + DELAY_BLOCKS,
+           call: Box::new(mandate_call),
+       }
+   );
+   ```
+
+3. **Event Monitoring**: Always monitor `RootOp` events in production:
+   ```typescript
+   api.query.system.events((events) => {
+     events.forEach((record) => {
+       const { event } = record;
+       if (event.section === 'mandate' && event.method === 'RootOp') {
+         const result = event.data[0];
+         console.log('Root operation executed:', result.toString());
+         // Alert/log for security monitoring
+       }
+     });
+   });
+   ```
+
+4. **Gradual Rollout**: For new governance models, start with higher thresholds and lower them gradually
+
+5. **Fallback Mechanism**: Maintain an emergency root key secured offline as ultimate fallback
+
+## Comparison with Sudo
+
+| Feature | Mandate | Sudo |
+|---------|---------|------|
+| Single Key | No | Yes |
+| Configurable Origin | Yes | No |
+| Multi-sig Support | Yes | No |
+| Collective Governance | Yes | No |
+| Fee Behavior | No fees | No fees |
+| Filter Bypass | Yes | Yes |
+| Event Logging | RootOp | Sudid |
+| Production Ready | Yes | Development only |
+
+## Runtime Integration
+
+```rust
+// runtime/src/lib.rs
+
+impl pallet_mandate::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type WeightInfo = pallet_mandate::weights::SubstrateWeight<Runtime>;
+    
+    // Example: Require 2/3 council approval
+    type ApprovedOrigin = EnsureOneOf<
+        EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>,
+    >;
+}
+
+construct_runtime!(
+    pub enum Runtime {
+        System: frame_system,
+        Mandate: pallet_mandate,
+        Council: pallet_collective::<Instance1>,
+        // ... other pallets
+    }
+);
+```

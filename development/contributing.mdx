@@ -1,0 +1,472 @@
+---
+title: Contributing to Avail
+description: Guidelines for contributing to the Avail blockchain node project
+---
+
+Thank you for your interest in contributing to Avail! This guide will help you get started with contributing code, documentation, and improvements to the project.
+
+## Code of Conduct
+
+Please review and adhere to our [Code of Conduct](https://github.com/availproject/avail/blob/main/.github/CODE_OF_CONDUCT.md) to maintain a respectful and collaborative environment.
+
+### Our Standards
+
+We value:
+- **Respectfulness** - Being considerate of differing opinions and experiences
+- **Empathy** - Showing understanding towards other community members
+- **Collaboration** - Working together constructively
+- **Professionalism** - Maintaining professional conduct in all interactions
+- **Responsibility** - Taking ownership of actions and their impact
+
+<Warning>
+  Harassment, discrimination, personal attacks, and unprofessional conduct are not tolerated. Report any concerns to the project team via [Discord](https://discord.com/invite/y6fHnxZQX8).
+</Warning>
+
+## Getting Started
+
+<Steps>
+  <Step title="Set Up Development Environment">
+    Follow the [Building from Source](/development/building) guide to set up your development environment with all necessary dependencies.
+  </Step>
+
+  <Step title="Explore the Codebase">
+    Familiarize yourself with the project structure:
+    - **`node/`** - Node implementation
+    - **`runtime/`** - Blockchain runtime
+    - **`pallets/`** - Custom pallets (dactr, mandate, system, vector)
+    - **`base/`** - Core utilities
+    - **`e2e/`** - End-to-end tests
+  </Step>
+
+  <Step title="Find an Issue">
+    Browse [open issues](https://github.com/availproject/avail/issues) to find something to work on, or create a new issue for bugs or feature requests.
+  </Step>
+</Steps>
+
+## Reporting Issues
+
+If you encounter a bug or have a feature request, please create an issue using the appropriate template.
+
+### Bug Reports
+
+When reporting bugs, include:
+
+- **Description** - Clear description of the issue
+- **Steps to reproduce** - Detailed steps to recreate the bug
+- **Expected behavior** - What should happen
+- **Actual behavior** - What actually happens
+- **Environment** - OS, Rust version, node version
+- **Logs** - Relevant error messages or logs
+
+Use the [Bug Report template](https://github.com/availproject/avail/issues/new/choose).
+
+### Feature Requests
+
+When requesting features, include:
+
+- **Use case** - Why this feature is needed
+- **Proposed solution** - How it could be implemented
+- **Alternatives** - Other approaches considered
+- **Impact** - Who would benefit from this feature
+
+Use the [Feature Request template](https://github.com/availproject/avail/issues/new/choose).
+
+## Making Changes
+
+### Fork and Clone
+
+<Steps>
+  <Step title="Fork the Repository">
+    Create a fork of the [Avail repository](https://github.com/availproject/avail) to your GitHub account.
+  </Step>
+
+  <Step title="Clone Your Fork">
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/avail.git
+    cd avail
+    ```
+  </Step>
+
+  <Step title="Add Upstream Remote">
+    ```bash
+    git remote add upstream https://github.com/availproject/avail.git
+    git fetch upstream
+    ```
+  </Step>
+</Steps>
+
+### Create a Branch
+
+Create a descriptive branch for your changes:
+
+```bash
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/issue-description
+```
+
+<Note>
+  Use clear branch names that describe the change, such as:
+  - `feature/add-new-rpc-endpoint`
+  - `fix/resolve-memory-leak`
+  - `refactor/improve-error-handling`
+  - `docs/update-installation-guide`
+</Note>
+
+### Make Your Changes
+
+Implement your changes following our coding standards:
+
+<CodeGroup>
+```rust Code Style
+// Follow Rust conventions and formatting
+// Use descriptive names
+// Add documentation comments
+
+/// Processes a new block and updates chain state.
+///
+/// # Arguments
+/// * `block` - The block to process
+///
+/// # Returns
+/// Result indicating success or error
+pub fn process_block(block: Block) -> Result<(), Error> {
+    // Implementation
+}
+```
+
+```toml Cargo.toml
+# Keep dependencies organized
+# Use workspace dependencies when possible
+# Document why external dependencies are needed
+```
+</CodeGroup>
+
+## Testing Your Changes
+
+Thoroughly test your changes before submitting:
+
+<Steps>
+  <Step title="Run Unit Tests">
+    ```bash
+    cargo test --release --workspace
+    ```
+  </Step>
+
+  <Step title="Run Specific Package Tests">
+    ```bash
+    cargo test --release -p package-name
+    ```
+  </Step>
+
+  <Step title="Run E2E Tests (if applicable)">
+    ```bash
+    cargo build --release --features fast-runtime
+    ./target/release/avail-node --dev
+    # In another terminal:
+    cd e2e && cargo test -- --test-threads 1
+    ```
+  </Step>
+
+  <Step title="Check Code Quality">
+    ```bash
+    # Format code
+    cargo fmt
+    
+    # Run linter
+    cargo clippy
+    
+    # Verify compilation with features
+    cargo build --release --features "runtime-benchmarks try-runtime"
+    ```
+  </Step>
+</Steps>
+
+See the [Testing Guide](/development/testing) for detailed information.
+
+## Code Quality Standards
+
+### Formatting
+
+All code must be formatted with `rustfmt`:
+
+```bash
+cargo fmt
+```
+
+Verify formatting:
+
+```bash
+cargo fmt --check
+```
+
+### Linting
+
+Code must pass Clippy without warnings:
+
+```bash
+cargo clippy
+```
+
+The project uses custom Clippy configuration in `Cargo.toml` under `[workspace.lints.clippy]`.
+
+### Documentation
+
+Add documentation for:
+- Public APIs
+- Complex logic
+- Runtime pallets
+- RPC methods
+
+```rust
+/// Brief description of the function.
+///
+/// More detailed explanation if needed.
+///
+/// # Arguments
+/// * `param` - Description of parameter
+///
+/// # Returns
+/// Description of return value
+///
+/// # Examples
+/// ```
+/// let result = function_name(param);
+/// ```
+pub fn function_name(param: Type) -> ReturnType {
+    // Implementation
+}
+```
+
+## Committing Changes
+
+### Commit Messages
+
+Write clear, descriptive commit messages:
+
+<CodeGroup>
+```bash Good Commit Messages
+# Use imperative mood
+git commit -m "Add Kate RPC endpoint for proof queries"
+git commit -m "Fix memory leak in block processing"
+git commit -m "Refactor transaction validation logic"
+git commit -m "Update documentation for RPC methods"
+```
+
+```bash Poor Commit Messages
+# Avoid vague or unclear messages
+git commit -m "Fix bug"
+git commit -m "Update code"
+git commit -m "Changes"
+```
+</CodeGroup>
+
+### Commit Guidelines
+
+- Keep commits focused and atomic
+- One logical change per commit
+- Reference issue numbers when applicable: `Fix #123: Resolve node crash on startup`
+- Provide context in the commit body for complex changes
+
+## Submitting a Pull Request
+
+<Steps>
+  <Step title="Push Your Branch">
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+
+  <Step title="Create Pull Request">
+    Go to GitHub and create a pull request from your fork to the main repository.
+  </Step>
+
+  <Step title="Fill Out PR Template">
+    Complete the [pull request template](https://github.com/availproject/avail/blob/main/.github/PULL_REQUEST_TEMPLATE.md) with:
+    
+    - **Type**: Feature, Bugfix, Refactor, Documentation, Testing, etc.
+    - **Description**: Summarize changes and motivation
+    - **Related Issues**: Link to related issues (e.g., "Closes #123")
+    - **Testing Performed**: Describe testing approach
+    - **Checklist**: Verify all items are completed
+  </Step>
+
+  <Step title="Address Review Feedback">
+    Respond to reviewer comments and make requested changes:
+    ```bash
+    # Make changes based on feedback
+    git add .
+    git commit -m "Address review feedback"
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+</Steps>
+
+## Pull Request Checklist
+
+Before submitting, ensure:
+
+- [ ] Code is formatted: `cargo fmt`
+- [ ] Tests pass: `cargo test --release --workspace`
+- [ ] Clippy passes: `cargo clippy`
+- [ ] Builds successfully: `cargo build --release`
+- [ ] Builds with features: `cargo build --release --features runtime-benchmarks`
+- [ ] Self-review completed
+- [ ] Documentation updated (if needed)
+- [ ] Commit messages are clear
+
+<Note>
+  We prioritize substantial contributions over minor changes. For larger contributions, consider reaching out through [Discord](https://discord.com/invite/y6fHnxZQX8) to discuss your plans.
+</Note>
+
+## Review Process
+
+### What to Expect
+
+1. **Initial Review** - A maintainer will review your PR within a few days
+2. **Feedback** - You may receive requests for changes or clarifications
+3. **Iteration** - Address feedback and push updates
+4. **Approval** - Once approved, your PR will be merged
+
+### Review Criteria
+
+Reviewers check for:
+- Code quality and style
+- Test coverage
+- Performance implications
+- Security considerations
+- Documentation completeness
+- Breaking changes
+
+## Types of Contributions
+
+### Code Contributions
+
+<CardGroup cols={2}>
+  <Card title="Features" icon="sparkles">
+    New functionality, pallets, RPC endpoints, or capabilities
+  </Card>
+  
+  <Card title="Bug Fixes" icon="bug">
+    Corrections for issues, crashes, or incorrect behavior
+  </Card>
+  
+  <Card title="Performance" icon="gauge-high">
+    Optimizations and efficiency improvements
+  </Card>
+  
+  <Card title="Refactoring" icon="code">
+    Code structure improvements without changing functionality
+  </Card>
+</CardGroup>
+
+### Non-Code Contributions
+
+<CardGroup cols={2}>
+  <Card title="Documentation" icon="book">
+    Guides, API docs, examples, and tutorials
+  </Card>
+  
+  <Card title="Testing" icon="flask">
+    Additional test coverage and test infrastructure
+  </Card>
+  
+  <Card title="Issue Triage" icon="tags">
+    Helping categorize and respond to issues
+  </Card>
+  
+  <Card title="Community Support" icon="users">
+    Answering questions on Discord and GitHub
+  </Card>
+</CardGroup>
+
+## Development Workflow
+
+### Keeping Your Fork Updated
+
+Regularly sync with the upstream repository:
+
+```bash
+# Fetch upstream changes
+git fetch upstream
+
+# Update your main branch
+git checkout main
+git merge upstream/main
+git push origin main
+
+# Rebase your feature branch
+git checkout feature/your-feature-name
+git rebase main
+```
+
+### Handling Merge Conflicts
+
+If conflicts arise:
+
+```bash
+# Update from main
+git fetch upstream
+git rebase upstream/main
+
+# Resolve conflicts in affected files
+# Then continue rebase
+git add .
+git rebase --continue
+
+# Force push to update PR
+git push --force-with-lease origin feature/your-feature-name
+```
+
+## Security
+
+For security vulnerabilities:
+
+<Warning>
+  **Do not** create public issues for security vulnerabilities. Report them privately according to our [Security Policy](https://github.com/availproject/avail/blob/main/.github/SECURITY.md).
+</Warning>
+
+## Documentation Contributions
+
+For documentation updates:
+
+1. Documentation website code: [availproject.github.io](https://github.com/availproject/availproject.github.io)
+2. Code documentation: In-line comments and doc comments in this repository
+3. Wiki: [GitHub Wiki](https://github.com/availproject/avail/wiki)
+
+## Getting Help
+
+If you need assistance:
+
+- **Discord** - Join our [Discord community](https://discord.com/invite/y6fHnxZQX8)
+- **GitHub Discussions** - Ask questions in GitHub Discussions
+- **Documentation** - Check the [project wiki](https://github.com/availproject/avail/wiki)
+
+## Recognition
+
+Contributors are recognized in:
+- Git commit history
+- Release notes
+- Community highlights
+
+Thank you for contributing to Avail! Your contributions help make the project better for everyone.
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="Building from Source" icon="hammer" href="/development/building">
+    Complete guide to building the Avail node
+  </Card>
+  
+  <Card title="Running Tests" icon="flask" href="/development/testing">
+    Testing infrastructure and best practices
+  </Card>
+  
+  <Card title="GitHub Repository" icon="github" href="https://github.com/availproject/avail">
+    Visit the main repository
+  </Card>
+  
+  <Card title="Project Wiki" icon="book" href="https://github.com/availproject/avail/wiki">
+    Additional documentation and guides
+  </Card>
+</CardGroup>

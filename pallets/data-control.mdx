@@ -1,0 +1,436 @@
+---
+title: 'DataControl Pallet'
+description: 'Application ID management and data availability submissions on Avail'
+---
+
+The DataControl pallet (dactr) manages application-specific data submissions and dynamic block sizing for the Avail data availability layer.
+
+## Overview
+
+DataControl enables applications to:
+- Register unique application keys and receive AppIDs
+- Submit data blobs to the blockchain for data availability
+- Dynamically adjust block dimensions (rows × columns)
+- Configure fee modifiers for data submissions
+
+## Storage Items
+
+### NextAppId
+
+```rust
+pub type NextAppId<T: Config> = StorageValue<_, AppId, ValueQuery>;
+```
+
+Tracks the next available application ID. Auto-increments when new applications are registered.
+
+### AppKeys
+
+```rust
+pub type AppKeys<T: Config> = StorageMap<_, Blake2_128Concat, AppKeyFor<T>, AppKeyInfoFor<T>>;
+```
+
+Maps application keys to their ownership information:
+
+<ResponseField name="AppKeyInfo" type="struct">
+  <ParamField name="owner" type="AccountId">
+    The account that owns this application key
+  </ParamField>
+  <ParamField name="id" type="AppId">
+    The unique application ID (AppId) assigned to this key
+  </ParamField>
+</ResponseField>
+
+### SubmitDataFeeModifier
+
+```rust
+pub type SubmitDataFeeModifier<T: Config> = StorageValue<_, DispatchFeeModifier, ValueQuery>;
+```
+
+Stores the fee modifier applied to `submit_data` calls.
+
+## Type Definitions
+
+```rust
+pub type AppKeyFor<T> = BoundedVec<u8, <T as Config>::MaxAppKeyLength>;
+pub type AppDataFor<T> = BoundedVec<u8, <T as Config>::MaxAppDataLength>;
+
+#[derive(Clone, Encode, Decode, TypeInfo, PartialEq, RuntimeDebug, MaxEncodedLen)]
+pub struct AppKeyInfo<Acc: PartialEq> {
+    pub owner: Acc,
+    pub id: AppId,
+}
+```
+
+## Extrinsics
+
+### create_application_key
+
+Creates a new application key and assigns it a unique AppID.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be a signed origin (the key owner)
+</ParamField>
+
+<ParamField path="key" type="AppKeyFor<T>" required>
+  The application key to register (max length: `MaxAppKeyLength`)
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+let key = BoundedVec::try_from(b"my-app-key".to_vec())?;
+let call = Call::create_application_key { key };
+call.dispatch(origin)?;
+```
+
+```typescript TypeScript
+const key = 'my-app-key';
+await api.tx.dataAvailability
+  .createApplicationKey(key)
+  .signAndSend(account);
+```
+</CodeGroup>
+
+**Events:**
+- `ApplicationKeyCreated { key, owner, id }` - Emitted when key is successfully created
+
+**Errors:**
+- `AppKeyCannotBeEmpty` - The provided key is an empty string
+- `AppKeyAlreadyExists` - A key with this value already exists
+- `LastAppIdOverflowed` - The AppID counter has reached maximum value
+
+---
+
+### submit_data
+
+Submits data to the blockchain for data availability. The data is hashed and the hash is stored in events.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be a signed origin
+</ParamField>
+
+<ParamField path="data" type="AppDataFor<T>" required>
+  The data to submit (max length: `MaxAppDataLength`, default 1MB)
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+let data = BoundedVec::try_from(b"Hello, Avail!".to_vec())?;
+let call = Call::submit_data { data };
+call.dispatch(origin)?;
+```
+
+```typescript TypeScript
+const data = 'Hello, Avail!';
+await api.tx.dataAvailability
+  .submitData(data)
+  .signAndSend(account);
+```
+</CodeGroup>
+
+**Weight Calculation:**
+
+The weight is dynamically calculated based on:
+- Data length and encoding overhead
+- Matrix dimensions (rows × cols)
+- DA dispatch ratio (block space allocated for data availability)
+
+```rust
+pub fn submit_data<T: Config>(data_len: usize) -> Weight {
+    let data_len: u32 = data_len.saturated_into();
+    let encoded_data_len = data_len + compact_prefix_length;
+    
+    // Calculate weight based on matrix capacity usage
+    let nb_scalar = encoded_data_len / (chunk_size - 1);
+    let max_scalar_da_ratio = DA_DISPATCH_RATIO_PERBILL * (cols * rows);
+    let data_scalar_ratio = Perbill::from_rational(nb_scalar, max_scalar_da_ratio);
+    
+    // Return max of regular weight and matrix-based weight
+    scalar_based_weight.max(regular_weight)
+}
+```
+
+**Events:**
+- `DataSubmitted { who, data_hash }` - Emitted with blake2_256 hash of the data
+
+**Errors:**
+- `DataCannotBeEmpty` - The submitted data is empty
+
+---
+
+### submit_block_length_proposal
+
+Proposes new block dimensions (rows and columns). Only callable by root.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be root origin
+</ParamField>
+
+<ParamField path="rows" type="u32" required>
+  Number of rows (must be power of 2)
+</ParamField>
+
+<ParamField path="cols" type="u32" required>
+  Number of columns (must be power of 2)
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+let call = Call::submit_block_length_proposal { rows: 256, cols: 256 };
+call.dispatch(root_origin)?;
+```
+
+```typescript TypeScript
+await api.tx.sudo.sudo(
+  api.tx.dataAvailability.submitBlockLengthProposal(256, 256)
+).signAndSend(sudoAccount);
+```
+</CodeGroup>
+
+**Validation Rules:**
+
+<Note>
+  Both rows and cols must be:
+  - Powers of 2
+  - Between `MinBlockRows`/`MinBlockCols` and `MaxBlockRows`/`MaxBlockCols`
+  - If reducing dimensions, block weight must be acceptable
+</Note>
+
+```rust
+// Power of 2 check
+ensure!(rows.0 != 0 && (rows.0 & (rows.0 - 1)) == 0, Error::<T>::NotPowerOfTwo);
+ensure!(cols.0 != 0 && (cols.0 & (cols.0 - 1)) == 0, Error::<T>::NotPowerOfTwo);
+
+// Bounds check
+ensure!(
+    rows <= T::MaxBlockRows::get() && cols <= T::MaxBlockCols::get(),
+    Error::<T>::BlockDimensionsOutOfBounds
+);
+ensure!(
+    rows >= T::MinBlockRows::get() && cols >= T::MinBlockCols::get(),
+    Error::<T>::BlockDimensionsTooSmall
+);
+```
+
+**Events:**
+- `BlockLengthProposalSubmitted { rows, cols }` - Emitted when proposal is accepted
+
+**Errors:**
+- `BlockDimensionsOutOfBounds` - Dimensions exceed maximum values
+- `BlockDimensionsTooSmall` - Dimensions below minimum values
+- `NotPowerOfTwo` - Rows or cols are not powers of 2
+- `InvalidBlockWeightReduction` - Cannot reduce block size when block is not empty
+
+---
+
+### set_application_key
+
+Renames an existing application key. Only callable by root.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be root origin
+</ParamField>
+
+<ParamField path="old_key" type="AppKeyFor<T>" required>
+  The existing application key
+</ParamField>
+
+<ParamField path="new_key" type="AppKeyFor<T>" required>
+  The new key name (must be unique)
+</ParamField>
+
+**Events:**
+- `ApplicationKeySet { old_key, new_key }` - Emitted when key is renamed
+
+**Errors:**
+- `AppKeyCannotBeEmpty` - Old or new key is empty
+- `AppKeyAlreadyExists` - New key already exists
+- `UnknownAppKey` - Old key does not exist
+
+---
+
+### set_submit_data_fee_modifier
+
+Sets the fee modifier for `submit_data` calls. Only callable by root.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be root origin
+</ParamField>
+
+<ParamField path="modifier" type="DispatchFeeModifier" required>
+  The fee modifier to apply
+</ParamField>
+
+**Events:**
+- `SubmitDataFeeModifierSet { value }` - Emitted when modifier is updated
+
+## Events
+
+<ResponseField name="ApplicationKeyCreated">
+  <ParamField name="key" type="AppKeyFor<T>">
+    The created application key
+  </ParamField>
+  <ParamField name="owner" type="AccountId">
+    The account that owns the key
+  </ParamField>
+  <ParamField name="id" type="AppId">
+    The assigned application ID
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="DataSubmitted">
+  <ParamField name="who" type="AccountId">
+    The account that submitted the data
+  </ParamField>
+  <ParamField name="data_hash" type="H256">
+    Blake2-256 hash of the submitted data
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="BlockLengthProposalSubmitted">
+  <ParamField name="rows" type="BlockLengthRows">
+    The proposed number of rows
+  </ParamField>
+  <ParamField name="cols" type="BlockLengthColumns">
+    The proposed number of columns
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="ApplicationKeySet">
+  <ParamField name="old_key" type="AppKeyFor<T>">
+    The previous key name
+  </ParamField>
+  <ParamField name="new_key" type="AppKeyFor<T>">
+    The new key name
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="SubmitDataFeeModifierSet">
+  <ParamField name="value" type="DispatchFeeModifier">
+    The new fee modifier value
+  </ParamField>
+</ResponseField>
+
+## Errors
+
+<ResponseField name="AppKeyAlreadyExists">
+  The application key already exists in storage
+</ResponseField>
+
+<ResponseField name="AppKeyCannotBeEmpty">
+  The application key is an empty string
+</ResponseField>
+
+<ResponseField name="LastAppIdOverflowed">
+  The application ID counter has overflowed
+</ResponseField>
+
+<ResponseField name="DataCannotBeEmpty">
+  The submitted data is empty
+</ResponseField>
+
+<ResponseField name="BlockDimensionsOutOfBounds">
+  The proposed block dimensions exceed maximum bounds
+</ResponseField>
+
+<ResponseField name="BlockDimensionsTooSmall">
+  The proposed block dimensions are below minimum bounds
+</ResponseField>
+
+<ResponseField name="InvalidBlockWeightReduction">
+  Cannot reduce block dimensions in a non-empty block
+</ResponseField>
+
+<ResponseField name="UnknownAppKey">
+  The specified application key does not exist
+</ResponseField>
+
+<ResponseField name="NotPowerOfTwo">
+  Block dimensions must be powers of 2
+</ResponseField>
+
+## Configuration
+
+```rust
+#[pallet::config]
+pub trait Config: frame_system::Config {
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    
+    /// Block length proposal Id type
+    type BlockLenProposalId: Parameter + Default + One + CheckedAdd + MaxEncodedLen;
+    
+    /// Max length of application key (default: 32 bytes)
+    #[pallet::constant]
+    type MaxAppKeyLength: Get<u32>;
+    
+    /// Max length of app data (default: 1MB)
+    #[pallet::constant]
+    type MaxAppDataLength: Get<u32>;
+    
+    /// Minimum number of rows in a block (default: 32)
+    #[pallet::constant]
+    type MinBlockRows: Get<BlockLengthRows>;
+    
+    /// Maximum number of rows in a block (default: 1024)
+    #[pallet::constant]
+    type MaxBlockRows: Get<BlockLengthRows>;
+    
+    /// Minimum number of cols in a block (default: 32)
+    #[pallet::constant]
+    type MinBlockCols: Get<BlockLengthColumns>;
+    
+    /// Maximum number of cols in a block (default: 1024)
+    #[pallet::constant]
+    type MaxBlockCols: Get<BlockLengthColumns>;
+    
+    /// Weight information for extrinsics
+    type WeightInfo: weights::WeightInfo;
+}
+```
+
+## Constants
+
+```rust
+pub const DA_DISPATCH_RATIO: u8 = 80; // 80% of block space for DA
+pub const NORMAL_DISPATCH_RATIO: u8 = 20; // 20% for normal transactions
+pub const BLOCK_CHUNK_SIZE: u32 = 32; // 32 bytes per chunk
+
+pub const DA_DISPATCH_RATIO_PERBILL: Perbill = Perbill::from_percent(80);
+pub const NORMAL_DISPATCH_RATIO_PERBILL: Perbill = Perbill::from_percent(20);
+```
+
+## Usage Examples
+
+### Register an Application
+
+```rust
+use frame_support::BoundedVec;
+
+// Create application key
+let app_key = BoundedVec::try_from(b"my-rollup".to_vec())?;
+DataControl::create_application_key(origin, app_key)?;
+
+// The ApplicationKeyCreated event will contain the assigned AppId
+```
+
+### Submit Data for Availability
+
+```rust
+// Prepare data
+let data = BoundedVec::try_from(transaction_batch.encode())?;
+
+// Submit to DA layer
+DataControl::submit_data(origin, data)?;
+
+// Monitor DataSubmitted event for confirmation
+```
+
+### Adjust Block Dimensions
+
+```rust
+// Increase block size to accommodate more data
+DataControl::submit_block_length_proposal(
+    root_origin,
+    512, // rows (power of 2)
+    512, // cols (power of 2)
+)?;
+```

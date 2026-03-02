@@ -1,0 +1,279 @@
+---
+title: Manual Node Setup
+description: Build and run Avail node from source code
+---
+
+This guide walks you through manually building and running an Avail node from source code. This approach gives you full control over the build process and is ideal for development, debugging, or running custom configurations.
+
+## Prerequisites
+
+Before building the Avail node, ensure you have the following dependencies installed:
+
+### Required Dependencies
+
+<Steps>
+  <Step title="Install Rust">
+    Install Rust using rustup:
+    
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+    ```
+    
+    The Avail node requires Rust version **1.82.0** as specified in `rust-toolchain.toml`.
+  </Step>
+
+  <Step title="Install Substrate Dependencies">
+    Install the required system packages for building Substrate-based nodes:
+    
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt update
+    sudo apt install -y build-essential git clang curl libssl-dev llvm libudev-dev make cmake protobuf-compiler
+    ```
+    
+    ```bash Fedora
+    sudo dnf install -y clang curl git openssl-devel make cmake protobuf-compiler
+    ```
+    
+    ```bash Arch Linux
+    sudo pacman -S --needed clang curl git openssl make cmake protobuf
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Clone the Repository">
+    Clone the Avail node repository:
+    
+    ```bash
+    git clone https://github.com/availproject/avail.git
+    cd avail
+    ```
+    
+    For a specific version, checkout the desired tag:
+    
+    ```bash
+    git checkout v2.3.4.0
+    ```
+  </Step>
+</Steps>
+
+## Building the Node
+
+### Development Build
+
+For testing and development (faster compilation, not optimized):
+
+```bash
+cargo build
+```
+
+### Production Build
+
+For production use (optimized, slower compilation):
+
+```bash
+cargo build --locked --release
+```
+
+<Note>
+The `--locked` flag ensures that dependencies match the versions in `Cargo.lock`, providing reproducible builds. The build process may take 20-40 minutes depending on your hardware.
+</Note>
+
+The compiled binary will be located at:
+- Development: `./target/debug/avail-node`
+- Release: `./target/release/avail-node`
+
+## Running the Node
+
+### Create Data Directory
+
+Before starting the node, create a directory to store blockchain data:
+
+```bash
+mkdir -p output
+```
+
+### Launch the Node
+
+<Tabs>
+  <Tab title="Mainnet">
+    Connect to the Avail Mainnet:
+    
+    ```bash
+    cargo run --locked --release -- --chain mainnet -d ./output
+    ```
+    
+    Or using the compiled binary:
+    
+    ```bash
+    ./target/release/avail-node --chain mainnet -d ./output
+    ```
+  </Tab>
+  
+  <Tab title="Turing Testnet">
+    Connect to the Turing testnet:
+    
+    ```bash
+    cargo run --locked --release -- --chain turing -d ./output
+    ```
+    
+    Or using the compiled binary:
+    
+    ```bash
+    ./target/release/avail-node --chain turing -d ./output
+    ```
+  </Tab>
+  
+  <Tab title="Development">
+    Run a local development chain:
+    
+    ```bash
+    cargo run --locked --release -- --dev
+    ```
+    
+    <Note>
+    Development mode (`--dev`) automatically enables Kate RPC and uses temporary storage unless you specify a data directory with `-d`.
+    </Note>
+  </Tab>
+</Tabs>
+
+### Common Launch Options
+
+Customize your node startup with these common flags:
+
+```bash
+./target/release/avail-node \
+  --chain mainnet \
+  -d ./output \
+  --name "MyAvailNode" \
+  --port 30333 \
+  --rpc-port 9944 \
+  --prometheus-port 9615 \
+  --validator
+```
+
+## Node Startup Output
+
+When successfully started, you'll see output similar to:
+
+```
+2025-03-05 11:39:57 Avail Node    
+2025-03-05 11:39:57 ✌️  version 2.3.0-6c6b8912fd3    
+2025-03-05 11:39:57 ❤️  by Avail Project <info@availproject.org>, 2017-2025    
+2025-03-05 11:39:57 📋 Chain specification: Avail Development Network    
+2025-03-05 11:39:57 🏷  Node name: spotty-ducks-6306    
+2025-03-05 11:39:57 👤 Role: AUTHORITY    
+2025-03-05 11:39:57 💾 Database: ParityDb at /tmp/.../chains/.../paritydb/full    
+2025-03-05 11:39:59 🏷  Local node identity is: 12D3KooW...    
+2025-03-05 11:39:59 💻 Operating system: linux    
+2025-03-05 11:39:59 💻 CPU: 13th Gen Intel(R) Core(TM) i7-13700K    
+2025-03-05 11:39:59 💻 CPU cores: 16    
+2025-03-05 11:39:59 💻 Memory: 31865MB    
+2025-03-05 11:39:59 〽️ Prometheus exporter started at 127.0.0.1:9615    
+2025-03-05 11:39:59 Running JSON-RPC server: addr=127.0.0.1:9944, allowed origins=["*"]    
+2025-03-05 11:39:59 🏁 CPU score: 1.36 GiBs    
+2025-03-05 11:39:59 🏁 Memory score: 22.37 GiBs    
+2025-03-05 11:39:59 🏁 Disk score (seq. writes): 6.14 GiBs    
+2025-03-05 11:39:59 🏁 Disk score (rand. writes): 2.85 GiBs    
+```
+
+<Note>
+Hardware benchmarks are automatically run at startup unless you disable them with `--no-hardware-benchmarks`.
+</Note>
+
+## Data Directory Structure
+
+The data directory (`-d` flag) contains:
+
+- `chains/` - Blockchain data for each network
+  - `[chain-name]/db/` - Block database (ParityDB)
+  - `[chain-name]/keystore/` - Local key storage
+  - `[chain-name]/network/` - Peer-to-peer network data
+
+## Running as a Background Service
+
+### Using systemd
+
+Create a systemd service file at `/etc/systemd/system/avail-node.service`:
+
+```ini
+[Unit]
+Description=Avail Node
+After=network.target
+
+[Service]
+Type=simple
+User=avail
+WorkingDirectory=/home/avail
+ExecStart=/home/avail/avail-node --chain mainnet -d /var/lib/avail --name "MyNode"
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable avail-node
+sudo systemctl start avail-node
+sudo systemctl status avail-node
+```
+
+View logs:
+
+```bash
+sudo journalctl -u avail-node -f
+```
+
+## Troubleshooting
+
+### Build Errors
+
+<AccordionGroup>
+  <Accordion title="Rust version mismatch">
+    Ensure you're using Rust 1.82.0:
+    
+    ```bash
+    rustup show
+    rustup update
+    ```
+    
+    The project's `rust-toolchain.toml` should automatically select the correct version.
+  </Accordion>
+  
+  <Accordion title="Missing dependencies">
+    Reinstall system dependencies and ensure `protoc` is available:
+    
+    ```bash
+    protoc --version
+    ```
+  </Accordion>
+  
+  <Accordion title="Out of memory during compilation">
+    Reduce parallel compilation jobs:
+    
+    ```bash
+    cargo build --locked --release -j 2
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Runtime Issues
+
+<Warning>
+If you see database errors, the chain data may be corrupted. Purge the chain data and resync:
+
+```bash
+./target/release/avail-node purge-chain --chain mainnet -d ./output
+```
+</Warning>
+
+## Next Steps
+
+- Learn about [Configuration Options](/running/configuration) to customize your node
+- Explore [Network Configurations](/running/networks) for different network options
+- Set up monitoring with Prometheus metrics on port 9615

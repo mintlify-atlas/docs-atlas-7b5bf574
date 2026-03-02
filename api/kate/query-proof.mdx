@@ -1,0 +1,509 @@
+---
+title: kate_queryProof & kate_queryMultiProof
+description: Query data availability proofs for individual cells or multiple cells
+---
+
+These methods retrieve cryptographic proofs for data cells in the Kate commitment matrix. Use `kate_queryProof` for individual cell proofs or `kate_queryMultiProof` for optimized batch queries.
+
+## kate_queryProof
+
+Query individual KZG proofs for specific cells in the data availability matrix.
+
+### Method Signature
+
+```rust
+async fn query_proof(
+    &self,
+    cells: Cells,
+    at: Option<HashOf<Block>>
+) -> RpcResult<Vec<GDataProof>>
+```
+
+### Parameters
+
+<ParamField path="cells" type="Cells" required>
+  Array of cell coordinates to query.
+  
+  **Type**: `BoundedVec<Cell, MaxCells>` where `MaxCells` is configurable (default 10,000)
+  
+  **Cell Structure**:
+  - `row`: Row index (u32)
+  - `col`: Column index (u32)
+  
+  **Maximum**: Configured via `--kate-max-cells-size` (default 10,000 cells per request)
+  
+  **Example**: `[{"row": 0, "col": 0}, {"row": 0, "col": 1}]`
+</ParamField>
+
+<ParamField path="at" type="Hash" default="null">
+  Block hash at which to query the proofs. If not provided, uses the best (latest finalized) block.
+  
+  **Format**: 32-byte hexadecimal hash prefixed with `0x`
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="Vec<GDataProof>">
+  Array of data proofs, one for each requested cell.
+  
+  **Type Definition**:
+  ```rust
+  pub type GDataProof = (GRawScalar, GProof);
+  pub type GRawScalar = U256;
+  pub struct GProof([u8; 48]);
+  ```
+  
+  Each `GDataProof` is a tuple containing:
+  - **Cell Data**: 256-bit scalar value (32 bytes as hex string)
+  - **KZG Proof**: 48-byte proof (as hex string)
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:9944 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "kate_queryProof",
+    "params": [
+      [{"row": 0, "col": 0}, {"row": 0, "col": 1}],
+      "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:9944', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'kate_queryProof',
+    params: [
+      [{row: 0, col: 0}, {row: 0, col: 1}],
+      '0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890'
+    ],
+    id: 1
+  })
+});
+
+const data = await response.json();
+console.log(data.result);
+```
+
+```python Python
+import requests
+
+url = "http://localhost:9944"
+payload = {
+    "jsonrpc": "2.0",
+    "method": "kate_queryProof",
+    "params": [
+        [{"row": 0, "col": 0}, {"row": 0, "col": 1}],
+        "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+}
+
+response = requests.post(url, json=payload)
+print(response.json())
+```
+
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    [
+      "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
+    ],
+    [
+      "0x234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12",
+      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    ]
+  ],
+  "id": 1
+}
+```
+
+Each element in the result array is a tuple `[cellData, proof]`:
+- **cellData** (32 bytes): The actual data value stored in the cell as a 256-bit scalar
+- **proof** (48 bytes): The KZG polynomial commitment proof for this cell
+
+## kate_queryMultiProof
+
+Query an optimized multi-proof for multiple cells. This method generates a single aggregated proof for all requested cells, which is more efficient than individual proofs when verifying multiple cells.
+
+### Method Signature
+
+```rust
+async fn query_multiproof(
+    &self,
+    cells: Cells,
+    at: Option<HashOf<Block>>
+) -> RpcResult<Vec<(GMultiProof, GCellBlock)>>
+```
+
+### Parameters
+
+<ParamField path="cells" type="Cells" required>
+  Array of cell coordinates to include in the multi-proof.
+  
+  **Maximum**: Configured via `--kate-max-cells-size` (default 10,000 cells per request)
+</ParamField>
+
+<ParamField path="at" type="Hash" default="null">
+  Block hash at which to query the multi-proof.
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="Vec<(GMultiProof, GCellBlock)>">
+  Array of multi-proof tuples.
+  
+  **Type Definitions**:
+  ```rust
+  pub type GMultiProof = (Vec<GRawScalar>, GProof);
+  pub struct GCellBlock {
+      pub start_x: u32,
+      pub start_y: u32,
+      pub end_x: u32,
+      pub end_y: u32,
+  }
+  ```
+  
+  Each tuple contains:
+  - **GMultiProof**: Tuple of cell data vector and aggregated proof
+    - `Vec<GRawScalar>`: All cell data values
+    - `GProof`: Single aggregated proof for all cells
+  - **GCellBlock**: Bounding box defining the cell region
+    - `start_x`: Starting column index
+    - `start_y`: Starting row index
+    - `end_x`: Ending column index
+    - `end_y`: Ending row index
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:9944 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "kate_queryMultiProof",
+    "params": [
+      [{"row": 0, "col": 0}, {"row": 0, "col": 1}, {"row": 1, "col": 0}],
+      "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:9944', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'kate_queryMultiProof',
+    params: [
+      [{row: 0, col: 0}, {row: 0, col: 1}, {row: 1, col: 0}],
+      '0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890'
+    ],
+    id: 1
+  })
+});
+
+const data = await response.json();
+console.log(data.result);
+```
+
+```python Python
+import requests
+
+url = "http://localhost:9944"
+payload = {
+    "jsonrpc": "2.0",
+    "method": "kate_queryMultiProof",
+    "params": [
+        [{"row": 0, "col": 0}, {"row": 0, "col": 1}, {"row": 1, "col": 0}],
+        "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+}
+
+response = requests.post(url, json=payload)
+print(response.json())
+```
+
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    [
+      [
+        [
+          "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+          "0x234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12",
+          "0x34567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234"
+        ],
+        "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
+      ],
+      {
+        "start_x": 0,
+        "start_y": 0,
+        "end_x": 1,
+        "end_y": 1
+      }
+    ]
+  ],
+  "id": 1
+}
+```
+
+The response structure is:
+```json
+[
+  [
+    [
+      [cellData1, cellData2, cellData3, ...],  // All cell data
+      aggregatedProof                          // Single proof for all cells
+    ],
+    {
+      "start_x": 0,  // Bounding box for queried cells
+      "start_y": 0,
+      "end_x": 1,
+      "end_y": 1
+    }
+  ]
+]
+```
+
+## Error Responses
+
+### Cell Limit Exceeded
+
+If requesting more cells than configured `max_cells_size`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Cannot query (15000) more than 10000 amount of cells per request. Either increase the max cells size (--kate-max-cells-size) or query less amount of cells per request."
+  },
+  "id": 1
+}
+```
+
+### Empty Commitments
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Requested block 0xa1b2...7890 has empty commitments"
+  },
+  "id": 1
+}
+```
+
+### Block Not Finalized
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Requested block 0xa1b2...7890 is not finalized"
+  },
+  "id": 1
+}
+```
+
+## Implementation Details
+
+### kate_queryProof Source
+
+From `/rpc/kate-rpc/src/lib.rs:226-262`:
+
+```rust
+async fn query_proof(
+    &self,
+    cells: Cells,
+    at: Option<HashOf<Block>>,
+) -> RpcResult<Vec<GDataProof>> {
+    if cells.len() > self.max_cells_size {
+        return Err(
+            internal_err!(
+                "Cannot query ({}) more than {} amount of cells per request...",
+                cells.len(),
+                self.max_cells_size
+            )
+        );
+    }
+
+    let _metric_observer = MetricObserver::new(ObserveKind::KateQueryProof);
+
+    let (api, at, number, block_len, extrinsics, header) = self.scope(at)?;
+    match header.extension() {
+        HeaderExtension::V3(ext) => {
+            if ext.commitment.commitment.is_empty() {
+                return Err(internal_err!("Requested block {at} has empty commitments"));
+            }
+        },
+    };
+
+    let cells = cells
+        .into_iter()
+        .map(|cell| (cell.row.0, cell.col.0))
+        .collect::<Vec<_>>();
+    let proof = api
+        .proof(at, number, extrinsics, block_len, cells)
+        .map_err(|kate_err| internal_err!("KateApi::proof failed: {kate_err:?}"))?
+        .map_err(|api_err| internal_err!("Failed API: {api_err:?}"))?;
+
+    Ok(proof)
+}
+```
+
+### kate_queryMultiProof Source
+
+From `/rpc/kate-rpc/src/lib.rs:264-300`:
+
+```rust
+async fn query_multiproof(
+    &self,
+    cells: Cells,
+    at: Option<HashOf<Block>>,
+) -> RpcResult<Vec<(GMultiProof, GCellBlock)>> {
+    if cells.len() > self.max_cells_size {
+        return Err(
+            internal_err!(
+                "Cannot query ({}) more than {} amount of cells per request...",
+                cells.len(),
+                self.max_cells_size
+            )
+        );
+    }
+
+    let _metric_observer = MetricObserver::new(ObserveKind::KateQueryProof);
+
+    let (api, at, number, block_len, extrinsics, header) = self.scope(at)?;
+    match header.extension() {
+        HeaderExtension::V3(ext) => {
+            if ext.commitment.commitment.is_empty() {
+                return Err(internal_err!("Requested block {at} has empty commitments"));
+            }
+        },
+    };
+
+    let cells = cells
+        .into_iter()
+        .map(|cell| (cell.row.0, cell.col.0))
+        .collect::<Vec<_>>();
+    let proof = api
+        .multiproof(at, number, extrinsics, block_len, cells)
+        .map_err(|kate_err| internal_err!("KateApi::proof failed: {kate_err:?}"))?
+        .map_err(|api_err| internal_err!("Failed API: {api_err:?}"))?;
+
+    Ok(proof)
+}
+```
+
+## Use Cases
+
+### Individual Cell Verification
+
+Verify specific cells against the block commitment:
+
+```javascript
+// Query proof for cell at row 0, col 0
+const proofs = await rpc('kate_queryProof', [
+  [{row: 0, col: 0}],
+  blockHash
+]);
+
+const [cellData, proof] = proofs[0];
+// Verify using KZG verification against block header commitment
+```
+
+### Batch Verification with Multi-Proof
+
+Efficiently verify multiple cells with a single proof:
+
+```javascript
+// Query multi-proof for 100 cells
+const cells = [];
+for (let i = 0; i < 100; i++) {
+  cells.push({row: Math.floor(i / 10), col: i % 10});
+}
+
+const multiProofs = await rpc('kate_queryMultiProof', [cells, blockHash]);
+const [[cellsData, aggregatedProof], boundingBox] = multiProofs[0];
+
+// Verify all 100 cells with single proof verification
+```
+
+### Data Availability Sampling
+
+Randomly sample cells for DA verification:
+
+```javascript
+// Random sampling strategy
+const randomCells = [];
+for (let i = 0; i < 30; i++) {
+  randomCells.push({
+    row: Math.floor(Math.random() * 256),
+    col: Math.floor(Math.random() * 256)
+  });
+}
+
+const proofs = await rpc('kate_queryProof', [randomCells, blockHash]);
+// Verify each proof to ensure data availability
+```
+
+## Performance Considerations
+
+### When to Use kate_queryProof
+
+- Querying small number of cells (< 10)
+- Need individual proofs for each cell
+- Verifying cells independently
+
+### When to Use kate_queryMultiProof
+
+- Querying many cells (> 10)
+- Cells are in same region/block
+- Want to minimize proof size
+- Batch verification is acceptable
+
+### Proof Size Comparison
+
+- **kate_queryProof**: 48 bytes × number of cells
+- **kate_queryMultiProof**: 48 bytes (single proof) regardless of cell count
+
+For 100 cells:
+- Individual proofs: 4,800 bytes
+- Multi-proof: 48 bytes (100× smaller)
+
+## Related Methods
+
+- [kate_queryRows](/api/kate/query-rows) - Query entire rows instead of individual cells
+- [kate_queryDataProof](/api/kate/query-data-proof) - Query transaction-specific proofs
+- [kate_blockLength](/api/kate/block-length) - Get matrix dimensions

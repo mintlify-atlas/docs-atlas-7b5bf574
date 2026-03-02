@@ -1,0 +1,367 @@
+---
+title: Monitoring & Metrics
+description: Configure Prometheus metrics and monitoring for Avail nodes
+---
+
+## Overview
+
+Avail nodes expose comprehensive metrics through a Prometheus endpoint, enabling real-time monitoring of node performance, block production, and data availability operations.
+
+## Prometheus Endpoint
+
+### Default Configuration
+
+By default, Avail nodes expose metrics on:
+- **Host:** `127.0.0.1` (localhost only)
+- **Port:** `9615`
+- **Endpoint:** `http://127.0.0.1:9615/metrics`
+
+### Configuring the Prometheus Exporter
+
+<Steps>
+  <Step title="Enable Prometheus (enabled by default)">
+    Prometheus metrics are enabled automatically. No action required.
+  </Step>
+
+  <Step title="Customize the port">
+    ```bash
+    avail-node --chain mainnet --prometheus-port 9616
+    ```
+  </Step>
+
+  <Step title="Expose externally">
+    <Warning>
+      Only expose metrics externally on trusted networks. Use firewalls to restrict access.
+    </Warning>
+    
+    ```bash
+    avail-node --chain mainnet --prometheus-external
+    ```
+  </Step>
+
+  <Step title="Disable Prometheus">
+    ```bash
+    avail-node --chain mainnet --no-prometheus
+    ```
+  </Step>
+</Steps>
+
+## Available Metrics
+
+### Avail-Specific Metrics
+
+Avail extends the standard Substrate metrics with custom metrics for data availability operations:
+
+#### Import Block Metrics
+
+```
+avail_import_block_total_execution_time
+```
+- **Type:** Histogram
+- **Unit:** Microseconds
+- **Description:** Total time to import a block including DA verification
+
+#### Header Extension Builder Metrics
+
+```
+avail_header_extension_builder_total_execution_time
+avail_header_extension_builder_evaluation_grid_build_time
+avail_header_extension_builder_commitment_build_time
+avail_header_extension_builder_grid_rows
+avail_header_extension_builder_grid_cols
+```
+
+- **Type:** Histogram
+- **Description:** Metrics for Kate commitment building and grid construction
+- Tracks execution time for polynomial evaluation and commitment generation
+
+#### Kate RPC Metrics
+
+<Note>
+  Enable with `--enable-kate-rpc-metrics` flag.
+</Note>
+
+```
+avail_kate_rpc_query_rows_execution_time
+avail_kate_rpc_query_proof_execution_time
+avail_kate_rpc_query_block_length_execution_time
+avail_kate_rpc_query_data_proof_execution_time
+```
+
+- **Type:** Histogram
+- **Unit:** Microseconds
+- **Description:** Execution time for Kate RPC methods
+
+### Standard Substrate Metrics
+
+Avail inherits all standard Substrate metrics, including:
+
+- Block height and finality metrics
+- Transaction pool statistics
+- Network peer counts and bandwidth
+- Database I/O operations
+- Runtime execution times
+- BABE and GRANDPA consensus metrics
+
+## Setting Up Prometheus Server
+
+### Basic Prometheus Configuration
+
+Create a `prometheus.yml` configuration file:
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'avail-validator-1'
+    static_configs:
+      - targets: ['localhost:9615']
+
+  - job_name: 'avail-validator-2'
+    static_configs:
+      - targets: ['localhost:9617']
+
+  - job_name: 'avail-fullnode'
+    static_configs:
+      - targets: ['localhost:9619']
+```
+
+### Multi-Node Setup
+
+For monitoring multiple validators and full nodes:
+
+```yaml
+scrape_configs:
+  - job_name: 'validators'
+    static_configs:
+      - targets:
+          - 'validator1.example.com:9615'
+          - 'validator2.example.com:9615'
+          - 'validator3.example.com:9615'
+        labels:
+          group: 'validators'
+
+  - job_name: 'fullnodes'
+    static_configs:
+      - targets:
+          - 'fullnode1.example.com:9615'
+          - 'fullnode2.example.com:9615'
+        labels:
+          group: 'fullnodes'
+```
+
+### Starting Prometheus
+
+```bash
+prometheus --config.file=prometheus.yml
+```
+
+Access the Prometheus UI at `http://localhost:9090`
+
+## Log Collection with Promtail
+
+### Promtail Configuration
+
+For systemd-based deployments, configure Promtail to collect logs:
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: avail-validator
+    journal:
+      json: false
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: avail-validator
+    relabel_configs:
+      - action: keep
+        source_labels: ["__journal__systemd_unit"]
+        regex: avail-validator.service
+      - source_labels: ["__journal__systemd_unit"]
+        target_label: "systemd_unit"
+```
+
+## Grafana Dashboard Setup
+
+### Adding Prometheus Data Source
+
+<Steps>
+  <Step title="Open Grafana">
+    Navigate to `http://localhost:3000` (default Grafana port)
+  </Step>
+
+  <Step title="Add data source">
+    - Go to Configuration → Data Sources
+    - Click "Add data source"
+    - Select "Prometheus"
+    - Set URL to `http://localhost:9090`
+    - Click "Save & Test"
+  </Step>
+
+  <Step title="Import Substrate dashboard">
+    Use the official Substrate/Polkadot dashboard templates as a starting point:
+    - Dashboard ID: 13759 (Substrate Node Metrics)
+  </Step>
+</Steps>
+
+### Key Metrics to Monitor
+
+#### Validator Health
+- `substrate_block_height` - Current block height
+- `substrate_finalized_height` - Latest finalized block
+- `substrate_ready_transactions_number` - Transaction pool size
+- `avail_header_extension_builder_total_execution_time` - Block building performance
+
+#### Network Health
+- `substrate_peers_count` - Number of connected peers
+- `substrate_sub_libp2p_network_bytes_total` - Network traffic
+- `substrate_sub_libp2p_connections_opened_total` - Connection metrics
+
+#### System Resources
+- `substrate_database_cache_bytes` - Database cache usage
+- `substrate_memory_usage_bytes` - Memory consumption
+- `process_cpu_seconds_total` - CPU usage
+
+## Telemetry
+
+Avail nodes can report to telemetry servers for public monitoring:
+
+### Enable Telemetry
+
+```bash
+avail-node --chain mainnet \
+  --telemetry-url 'wss://telemetry.example.com/submit 0'
+```
+
+### Disable Telemetry
+
+```bash
+avail-node --chain mainnet --no-telemetry
+```
+
+<Note>
+  Telemetry verbosity levels range from 0-9, with 0 being the least verbose.
+</Note>
+
+## Health Checks
+
+### RPC Health Endpoint
+
+Check node health via RPC:
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{"id":1, "jsonrpc":"2.0", "method": "system_health"}' \
+  http://localhost:9944
+```
+
+Response:
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "isSyncing": false,
+    "peers": 45,
+    "shouldHavePeers": true
+  },
+  "id": 1
+}
+```
+
+### System Monitoring Script
+
+Example monitoring script:
+
+```bash
+#!/bin/bash
+
+# Check if node is running
+if ! systemctl is-active --quiet avail-node; then
+  echo "CRITICAL: Avail node is not running"
+  exit 2
+fi
+
+# Check peer count
+PEERS=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"system_health","id":1}' \
+  http://localhost:9944 | jq -r '.result.peers')
+
+if [ "$PEERS" -lt 5 ]; then
+  echo "WARNING: Low peer count: $PEERS"
+  exit 1
+fi
+
+echo "OK: Node healthy with $PEERS peers"
+exit 0
+```
+
+## Storage Monitoring
+
+### Enable Storage Monitoring
+
+```bash
+avail-node --chain mainnet \
+  --db-storage-threshold 10240 \
+  --db-storage-polling-period 60
+```
+
+- `--db-storage-threshold <MiB>` - Minimum free space required (default: 1024 MiB)
+- `--db-storage-polling-period <SECONDS>` - Check interval (default: 5 seconds)
+
+<Warning>
+  The node will gracefully terminate if available storage drops below the threshold.
+</Warning>
+
+## Alerting Rules
+
+Example Prometheus alerting rules:
+
+```yaml
+groups:
+  - name: avail_alerts
+    interval: 30s
+    rules:
+      - alert: AvailNodeDown
+        expr: up{job=~"avail.*"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Avail node {{ $labels.instance }} is down"
+
+      - alert: AvailLowPeerCount
+        expr: substrate_peers_count < 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low peer count on {{ $labels.instance }}"
+
+      - alert: AvailBlockProductionStalled
+        expr: increase(substrate_block_height[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Block production stalled on {{ $labels.instance }}"
+```
+
+## Best Practices
+
+1. **Regular monitoring** - Set up automated alerting for critical metrics
+2. **Historical data** - Retain metrics for at least 30 days for trend analysis
+3. **Baseline metrics** - Establish normal operating ranges for your hardware
+4. **Secure access** - Use authentication and TLS for external metric endpoints
+5. **Log rotation** - Configure log rotation to prevent disk space issues

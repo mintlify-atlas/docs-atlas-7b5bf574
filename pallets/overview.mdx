@@ -1,0 +1,115 @@
+---
+title: 'Custom Pallets Overview'
+description: 'Overview of custom Substrate pallets in the Avail blockchain'
+---
+
+The Avail blockchain extends Substrate's functionality with three custom pallets that provide data availability, cross-chain messaging, and governance capabilities.
+
+## Custom Pallets
+
+### DataControl (dactr)
+
+The DataControl pallet manages application-specific data submissions and dynamic block sizing on Avail.
+
+**Key Features:**
+- Application ID (AppID) management with unique key registration
+- Data availability submissions with hash verification
+- Dynamic block dimension proposals (rows × columns)
+- Fee modifiers for data submission
+
+**Primary Use Cases:**
+- Register application keys for data availability
+- Submit data blobs to the network
+- Adjust block dimensions based on network conditions
+
+[Learn more about DataControl →](/pallets/data-control)
+
+### Vector
+
+The Vector pallet implements a cross-chain messaging bridge using zero-knowledge proofs to verify Ethereum beacon chain state.
+
+**Key Features:**
+- Ethereum light client verification using Groth16 and SP1 proofs
+- Cross-chain message execution with storage proofs
+- Sync committee tracking and header verification
+- Fungible token and arbitrary message bridging
+
+**Primary Use Cases:**
+- Bridge messages from Ethereum to Avail
+- Verify Ethereum state transitions
+- Execute cross-chain token transfers
+
+[Learn more about Vector →](/pallets/vector)
+
+### Mandate
+
+The Mandate pallet provides a governance mechanism for executing privileged operations through an approved origin.
+
+**Key Features:**
+- Execute root-level calls from approved origins
+- Bypass normal transaction filters
+- Fee-free execution for governance operations
+
+**Primary Use Cases:**
+- Governance-approved runtime upgrades
+- Administrative operations
+- Protocol parameter updates
+
+[Learn more about Mandate →](/pallets/mandate)
+
+## Architecture
+
+All three pallets follow Substrate's FRAME architecture and integrate with the runtime's core functionality:
+
+```rust
+// Example pallet structure
+#[frame_support::pallet]
+pub mod pallet {
+    use frame_support::pallet_prelude::*;
+    use frame_system::pallet_prelude::*;
+
+    #[pallet::config]
+    pub trait Config: frame_system::Config {
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+        // Additional configuration types
+    }
+
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
+
+    #[pallet::storage]
+    // Storage items
+
+    #[pallet::call]
+    // Extrinsic functions
+
+    #[pallet::event]
+    // Events
+
+    #[pallet::error]
+    // Errors
+}
+```
+
+## Common Patterns
+
+### Storage Items
+
+All pallets use FRAME storage macros for type-safe on-chain storage:
+- `StorageValue` - Single value storage
+- `StorageMap` - Key-value mappings
+- `ValueQuery` - Default query behavior
+
+### Events
+
+Pallets emit events for state changes to enable off-chain indexing and monitoring.
+
+### Weight System
+
+All extrinsics include weight calculations for resource metering and fee computation.
+
+## Development Resources
+
+- [Substrate Documentation](https://docs.substrate.io/)
+- [FRAME Pallets](https://docs.substrate.io/reference/frame-pallets/)
+- [Avail GitHub Repository](https://github.com/availproject/avail)

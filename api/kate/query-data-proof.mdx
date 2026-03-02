@@ -1,0 +1,384 @@
+---
+title: kate_queryDataProof
+description: Query Merkle proof for a specific transaction in a block
+---
+
+The `kate_queryDataProof` method retrieves a Merkle proof demonstrating the inclusion of a specific transaction within a block's data root. This is essential for light clients to verify transaction inclusion without downloading the entire block.
+
+## Method Signature
+
+```rust
+async fn query_data_proof(
+    &self,
+    transaction_index: u32,
+    at: Option<HashOf<Block>>
+) -> RpcResult<ProofResponse>
+```
+
+## Parameters
+
+<ParamField path="transaction_index" type="u32" required>
+  The index of the transaction within the block's extrinsics array.
+  
+  **Note**: Index 0 is typically the timestamp inherent, and the last index is the finality inherent. User transactions are indexed starting from 1.
+  
+  **Example**: `1` for the first user transaction in the block
+</ParamField>
+
+<ParamField path="at" type="Hash" default="null">
+  Block hash at which to query the transaction proof. If not provided, uses the best (latest finalized) block.
+  
+  **Format**: 32-byte hexadecimal hash prefixed with `0x`
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="ProofResponse">
+  A proof response containing the Merkle proof and associated roots.
+  
+  **Structure**:
+  ```typescript
+  interface ProofResponse {
+    data_proof: {
+      roots: {
+        data_root: Hash,      // Combined root of blob_root and bridge_root
+        blob_root: Hash,      // Merkle root of transaction data
+        bridge_root: Hash     // Merkle root of bridge messages (or zero)
+      },
+      proof: Hash[],          // Merkle proof path
+      number_of_leaves: u32,  // Total number of leaves in the tree
+      leaf_index: u32,        // Index of this transaction in the tree
+      leaf: Hash              // Hash of the transaction data
+    },
+    message: string | null    // Optional message
+  }
+  ```
+  
+  The `data_root` is calculated as: `keccak256(blob_root || bridge_root)`
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:9944 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "kate_queryDataProof",
+    "params": [
+      1,
+      "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:9944', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'kate_queryDataProof',
+    params: [
+      1,
+      '0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890'
+    ],
+    id: 1
+  })
+});
+
+const data = await response.json();
+console.log(data.result);
+```
+
+```python Python
+import requests
+
+url = "http://localhost:9944"
+payload = {
+    "jsonrpc": "2.0",
+    "method": "kate_queryDataProof",
+    "params": [
+        1,
+        "0xa1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+    ],
+    "id": 1
+}
+
+response = requests.post(url, json=payload)
+print(response.json())
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "data_proof": {
+      "roots": {
+        "data_root": "0x8f3e1c9a7b2d4e5f6a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4",
+        "blob_root": "0x729afe29f4e9fee2624d7ed311bcf57d24683fb78938bcb4e2a6a22c4968795e",
+        "bridge_root": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "proof": [
+        "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+        "0x234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
+      ],
+      "number_of_leaves": 4,
+      "leaf_index": 0,
+      "leaf": "0x729afe29f4e9fee2624d7ed311bcf57d24683fb78938bcb4e2a6a22c4968795e"
+    },
+    "message": null
+  },
+  "id": 1
+}
+```
+
+## Query Latest Block
+
+Query a transaction proof from the most recent finalized block:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "kate_queryDataProof",
+  "params": [1],
+  "id": 1
+}
+```
+
+## Proof Verification
+
+To verify the proof:
+
+1. **Hash the transaction data** using Keccak256 to get the `leaf`
+2. **Verify the Merkle proof** path against the `blob_root`
+3. **Compute the data_root** as `keccak256(blob_root || bridge_root)`
+4. **Compare** the computed `data_root` with the one in the block header
+
+### Example Verification (JavaScript)
+
+```javascript
+import { keccak256 } from '@ethersproject/keccak256';
+import { concat, hexlify } from '@ethersproject/bytes';
+
+function verifyDataProof(proofResponse, transactionData, blockHeader) {
+  // Step 1: Hash transaction data
+  const leaf = keccak256(transactionData);
+  
+  // Step 2: Verify Merkle proof
+  let computedHash = leaf;
+  let { proof, leaf_index } = proofResponse.data_proof;
+  
+  for (let i = 0; i < proof.length; i++) {
+    const proofElement = proof[i];
+    
+    if (leaf_index % 2 === 0) {
+      // Current node is left
+      computedHash = keccak256(concat([computedHash, proofElement]));
+    } else {
+      // Current node is right
+      computedHash = keccak256(concat([proofElement, computedHash]));
+    }
+    
+    leaf_index = Math.floor(leaf_index / 2);
+  }
+  
+  // Step 3: Verify computed hash matches blob_root
+  const blobRoot = proofResponse.data_proof.roots.blob_root;
+  if (computedHash !== blobRoot) {
+    return false;
+  }
+  
+  // Step 4: Verify data_root
+  const bridgeRoot = proofResponse.data_proof.roots.bridge_root;
+  const expectedDataRoot = keccak256(concat([blobRoot, bridgeRoot]));
+  
+  return expectedDataRoot === proofResponse.data_proof.roots.data_root;
+}
+
+// Usage
+const proofResponse = await rpc('kate_queryDataProof', [1, blockHash]);
+const isValid = verifyDataProof(proofResponse, txData, header);
+console.log('Proof valid:', isValid);
+```
+
+## Error Responses
+
+### Transaction Index Out of Range
+
+If the transaction index doesn't exist in the block:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Cannot fetch tx data at tx index 100 at block 0xa1b2...7890"
+  },
+  "id": 1
+}
+```
+
+### Block Not Finalized
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Requested block 0xa1b2...7890 is not finalized"
+  },
+  "id": 1
+}
+```
+
+### Invalid Block Hash
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": 1,
+    "message": "Invalid block number: ..."
+  },
+  "id": 1
+}
+```
+
+## Implementation Details
+
+### Source Code Reference
+
+From `/rpc/kate-rpc/src/lib.rs:314-331`:
+
+```rust
+async fn query_data_proof(
+    &self,
+    tx_idx: u32,
+    at: Option<HashOf<Block>>,
+) -> RpcResult<ProofResponse> {
+    let _metric_observer = MetricObserver::new(ObserveKind::KateQueryDataProof);
+
+    // Calculate proof for block and tx index
+    let (api, at, number, _, extrinsics, _) = self.scope(at)?;
+    let proof = api
+        .data_proof(at, number, extrinsics, tx_idx)
+        .map_err(|e| internal_err!("KateApi::data_proof failed: {e:?}"))?
+        .ok_or_else(|| {
+            internal_err!("Cannot fetch tx data at tx index {tx_idx:?} at block {at:?}")
+        })?;
+
+    Ok(proof)
+}
+```
+
+### Validation Steps
+
+1. **Block Finalization**: Ensures the requested block is finalized
+2. **Transaction Existence**: Verifies the transaction index is valid
+3. **Proof Generation**: Computes the Merkle proof path
+4. **Root Calculation**: Derives data_root from blob_root and bridge_root
+5. **Metrics**: Records query performance (if enabled)
+
+## Use Cases
+
+### Light Client Transaction Verification
+
+Light clients can verify transaction inclusion without the full block:
+
+```javascript
+// Verify a transaction was included in a block
+const txIndex = 1;
+const proof = await rpc('kate_queryDataProof', [txIndex, blockHash]);
+const header = await rpc('chain_getHeader', [blockHash]);
+
+// Verify proof against header
+if (verifyDataProof(proof, txData, header)) {
+  console.log('Transaction included in block!');
+}
+```
+
+### Application Data Verification
+
+Verify that application-specific data was included:
+
+```javascript
+// Submit data
+const tx = await submitData(appId, data);
+const blockHash = await tx.waitFinalized();
+
+// Get transaction index from block
+const block = await api.rpc.chain.getBlock(blockHash);
+const txIndex = block.block.extrinsics.findIndex(ext => 
+  ext.hash.toHex() === tx.hash.toHex()
+);
+
+// Query and verify proof
+const proof = await rpc('kate_queryDataProof', [txIndex, blockHash]);
+```
+
+### Bridge Message Verification
+
+Verify bridge messages in blocks with bridge activity:
+
+```javascript
+const proof = await rpc('kate_queryDataProof', [txIndex, blockHash]);
+
+// Check if block contains bridge messages
+if (proof.data_proof.roots.bridge_root !== '0x00...00') {
+  console.log('Block contains bridge messages');
+  // Verify bridge message inclusion
+}
+```
+
+## Data Root Calculation
+
+The `data_root` is a combined hash ensuring integrity of both transaction data and bridge messages:
+
+```javascript
+function calculateDataRoot(blobRoot, bridgeRoot) {
+  // Concatenate blob_root and bridge_root
+  const combined = concat([blobRoot, bridgeRoot]);
+  
+  // Hash with Keccak256
+  return keccak256(combined);
+}
+
+// Example
+const dataRoot = calculateDataRoot(
+  '0x729afe29f4e9fee2624d7ed311bcf57d24683fb78938bcb4e2a6a22c4968795e',
+  '0x0000000000000000000000000000000000000000000000000000000000000000'
+);
+```
+
+This structure allows separate verification of:
+- **Transaction data** via the `blob_root` Merkle tree
+- **Bridge messages** via the `bridge_root` Merkle tree
+- **Combined integrity** via the `data_root`
+
+## Transaction Indexing
+
+Understanding transaction indices in Avail blocks:
+
+| Index | Type | Description |
+|-------|------|-------------|
+| 0 | Inherent | Timestamp inherent (always present) |
+| 1 | Transaction | First user transaction |
+| 2 | Transaction | Second user transaction |
+| ... | Transaction | Additional transactions |
+| n-1 | Inherent | Finality inherent (always present) |
+
+To query the first user transaction, use index `1`.
+
+## Related Methods
+
+- [kate_queryProof](/api/kate/query-proof) - Query cell-level KZG proofs
+- [kate_queryRows](/api/kate/query-rows) - Query entire data matrix rows
+- [kate_blockLength](/api/kate/block-length) - Get block metadata

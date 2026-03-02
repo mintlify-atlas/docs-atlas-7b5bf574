@@ -1,0 +1,279 @@
+---
+title: DataAvailApi Runtime API
+description: Runtime API for querying block matrix dimensions and data availability parameters
+keywords: ['runtime api', 'block length', 'matrix dimensions', 'data availability']
+---
+
+The `DataAvailApi` runtime API provides methods to query block-level data availability parameters, primarily the block matrix dimensions that determine how transaction data is arranged for erasure coding and Kate commitments.
+
+## Overview
+
+Runtime APIs are different from RPC endpoints:
+
+<AccordionGroup>
+  <Accordion title="Runtime APIs vs RPC Endpoints">
+    **Runtime APIs** execute inside the runtime (WebAssembly) and have direct access to the blockchain state. They are:
+    
+    - Compiled into the runtime binary
+    - Execute deterministically on-chain
+    - Access runtime storage directly
+    - Called by the node client or RPC layer
+    - Versioned with the runtime
+    
+    **RPC Endpoints** run in the node client (native code) and provide:
+    
+    - Network communication interfaces
+    - State queries and transaction submission
+    - May call runtime APIs internally
+    - Not part of consensus
+  </Accordion>
+</AccordionGroup>
+
+## API Definition
+
+Defined in `runtime/src/apis.rs:43-47`:
+
+```rust
+#[api_version(2)]
+pub trait DataAvailApi {
+    fn block_length() -> BlockLength;
+}
+```
+
+## Methods
+
+### block_length
+
+Returns the current block matrix dimensions and constraints.
+
+```rust
+fn block_length() -> BlockLength;
+```
+
+<ParamField path="return" type="BlockLength">
+  Block length configuration containing matrix dimensions and dispatch ratios.
+</ParamField>
+
+#### Return Type: BlockLength
+
+The `BlockLength` structure contains:
+
+<ResponseField name="max" type="object">
+  Maximum block length per dispatch class.
+  
+  <Expandable title="properties">
+    <ResponseField name="normal" type="u32">
+      Maximum bytes for normal (non-DA) transactions. Typically set to 100% of matrix capacity.
+    </ResponseField>
+    
+    <ResponseField name="operational" type="u32">
+      Maximum bytes for operational transactions (governance, staking).
+    </ResponseField>
+    
+    <ResponseField name="mandatory" type="u32">
+      Maximum bytes for mandatory transactions (inherents).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="rows" type="BlockLengthRows">
+  Number of rows in the data matrix. Must be a power of 2 between 32 and 1024.
+  
+  Default: 256 rows
+</ResponseField>
+
+<ResponseField name="cols" type="BlockLengthColumns">
+  Number of columns in the data matrix. Must be a power of 2 between 32 and 1024.
+  
+  Default: 256 columns
+</ResponseField>
+
+<ResponseField name="chunk_size" type="u32">
+  Size of each matrix cell in bytes.
+  
+  Always: 32 bytes (31 bytes usable for data to fit in scalar field)
+</ResponseField>
+
+#### Implementation
+
+The implementation delegates to the frame system (`runtime/src/apis.rs:392-396`):
+
+```rust
+impl crate::apis::DataAvailApi<Block> for Runtime {
+    fn block_length() -> frame_system::limits::BlockLength {
+        frame_system::Pallet::<Runtime>::block_length()
+    }
+}
+```
+
+## Usage Context
+
+### When to Use
+
+Call `block_length()` when you need to:
+
+1. **Calculate Matrix Space**: Determine how much data fits in a block
+2. **Validate Data Submissions**: Check if data exceeds block capacity
+3. **Generate Kate Proofs**: Build the erasure-coded matrix
+4. **Query Block Dimensions**: Display current block configuration
+
+### Matrix Dimensions
+
+The block matrix dimensions determine the data availability capacity:
+
+```
+Block Capacity (bytes) = rows × cols × 31 bytes × 90%
+                         └──┬──┘  └─┬─┘  └──┬──┘   └─┬─┘
+                          matrix  usable  chunk   DA ratio
+                           size   data    size
+```
+
+<Info>
+**DA Dispatch Ratio**: Only 90% of matrix space is allocated for data availability transactions (`submit_data`). The remaining 10% is reserved for normal transactions to prevent DA transactions from blocking critical operations.
+</Info>
+
+#### Example Calculations
+
+<Tabs>
+  <Tab title="Default (256×256)">
+    ```
+    Rows: 256
+    Cols: 256
+    Cells: 256 × 256 = 65,536
+    
+    Total capacity: 65,536 × 31 bytes = 2,031,616 bytes (~2 MB)
+    DA capacity: 2,031,616 × 0.9 = 1,828,454 bytes (~1.8 MB)
+    Normal capacity: 2,031,616 × 1.0 = 2,031,616 bytes (~2 MB)
+    ```
+  </Tab>
+  
+  <Tab title="Maximum (1024×1024)">
+    ```
+    Rows: 1024
+    Cols: 1024
+    Cells: 1024 × 1024 = 1,048,576
+    
+    Total capacity: 1,048,576 × 31 bytes = 32,505,856 bytes (~32 MB)
+    DA capacity: 32,505,856 × 0.9 = 29,255,270 bytes (~29 MB)
+    Normal capacity: 32,505,856 × 1.0 = 32,505,856 bytes (~32 MB)
+    ```
+  </Tab>
+  
+  <Tab title="Minimum (32×32)">
+    ```
+    Rows: 32
+    Cols: 32
+    Cells: 32 × 32 = 1,024
+    
+    Total capacity: 1,024 × 31 bytes = 31,744 bytes (~31 KB)
+    DA capacity: 31,744 × 0.9 = 28,570 bytes (~28 KB)
+    Normal capacity: 31,744 × 1.0 = 31,744 bytes (~31 KB)
+    ```
+  </Tab>
+</Tabs>
+
+## Dynamic Block Length
+
+Block dimensions can be adjusted via governance using the `da_control::submit_block_length_proposal` dispatchable function.
+
+### Adjustment Process
+
+<Steps>
+  <Step title="Submit Proposal">
+    Root origin (governance) calls `submit_block_length_proposal(rows, cols)`
+    
+    ```rust
+    pub fn submit_block_length_proposal(
+        origin: OriginFor<T>,
+        rows: u32,
+        cols: u32,
+    ) -> DispatchResultWithPostInfo
+    ```
+  </Step>
+  
+  <Step title="Validate Dimensions">
+    Ensures dimensions are:
+    - Powers of 2
+    - Within bounds (32-1024 for both rows and cols)
+    - Supported by the Kate commitment system
+  </Step>
+  
+  <Step title="Update Configuration">
+    Updates `DynamicBlockLength` storage, which takes effect for subsequent blocks.
+  </Step>
+</Steps>
+
+### Constraints
+
+<Warning>
+Dimensions must be powers of 2 for efficient FFT (Fast Fourier Transform) operations during polynomial interpolation for Kate commitments.
+</Warning>
+
+```rust
+// Defined in runtime/src/constants.rs
+pub const MinBlockRows: BlockLengthRows = BlockLengthRows(32);
+pub const MaxBlockRows: BlockLengthRows = BlockLengthRows(1024);
+pub const MinBlockCols: BlockLengthColumns = BlockLengthColumns(32);
+pub const MaxBlockCols: BlockLengthColumns = BlockLengthColumns(1024);
+```
+
+## Code Example
+
+Calling the runtime API from Rust client code:
+
+```rust
+use sp_api::ProvideRuntimeApi;
+use avail_runtime::DataAvailApi;
+
+let api = client.runtime_api();
+let block_hash = client.info().best_hash;
+
+// Query block length
+let block_length = api.block_length(block_hash)?;
+
+println!("Block dimensions: {}×{}", 
+    block_length.rows.0, 
+    block_length.cols.0
+);
+
+let total_cells = block_length.rows.0 * block_length.cols.0;
+let capacity_bytes = total_cells * 31; // 31 usable bytes per cell
+
+println!("Block capacity: {} bytes", capacity_bytes);
+println!("DA capacity: {} bytes", 
+    capacity_bytes * 90 / 100
+);
+```
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="KateApi" icon="key" href="/api/runtime/kate-api">
+    Generate Kate commitments and data availability proofs using block dimensions.
+  </Card>
+  
+  <Card title="Kate RPC" icon="server" href="/api/kate/overview">
+    RPC endpoints for querying Kate proofs and data availability information.
+  </Card>
+  
+  <Card title="Data Availability" icon="database" href="/architecture/data-availability">
+    Learn how the matrix dimensions relate to erasure coding and Kate commitments.
+  </Card>
+  
+  <Card title="Runtime Architecture" icon="cube" href="/architecture/runtime">
+    Understanding the da_control pallet and block length configuration.
+  </Card>
+</CardGroup>
+
+## API Version History
+
+<Accordion title="Version 2 (Current)">
+  **Current version**: 2
+  
+  - No changes from version 1
+  - Marked with `#[api_version(2)]` in source
+</Accordion>
+
+<Note>
+The API version is incremented when the runtime API signature changes. Clients should check the API version to ensure compatibility.
+</Note>

@@ -1,0 +1,617 @@
+---
+title: Troubleshooting
+description: Common issues, debugging techniques, and solutions for Avail nodes
+---
+
+## Overview
+
+This guide helps diagnose and resolve common issues when running Avail nodes, including sync problems, performance issues, and configuration errors.
+
+## Diagnostic Tools
+
+### Log Analysis
+
+Avail nodes log to standard output. Capture and analyze logs:
+
+```bash
+# View recent logs (systemd)
+journalctl -u avail-node -n 100
+
+# Follow logs in real-time
+journalctl -u avail-node -f
+
+# Filter by log level
+journalctl -u avail-node | grep -i "error\|warn"
+
+# Logs from specific time
+journalctl -u avail-node --since "1 hour ago"
+```
+
+### Debugging Flags
+
+Increase log verbosity for debugging:
+
+```bash
+# Global debug level
+avail-node --chain mainnet -l debug
+
+# Specific module logging
+avail-node --chain mainnet -l info,sync=debug,grandpa=debug,babe=debug
+
+# Detailed log output
+avail-node --chain mainnet --detailed-log-output
+```
+
+### Log Levels
+
+From least to most verbose:
+- `error` - Only critical errors
+- `warn` - Warnings and errors
+- `info` - General information (default)
+- `debug` - Detailed debugging information
+- `trace` - Very verbose tracing
+
+## Common Issues
+
+### Sync Issues
+
+#### Node Not Syncing
+
+**Symptoms:**
+- Block height not increasing
+- "0 peers" in logs
+- "Idle" state persists
+
+**Diagnosis:**
+
+```bash
+# Check peer count
+curl -H "Content-Type: application/json" \
+  -d '{"id":1, "jsonrpc":"2.0", "method": "system_health"}' \
+  http://localhost:9944 | jq '.result.peers'
+
+# Check sync status
+curl -H "Content-Type: application/json" \
+  -d '{"id":1, "jsonrpc":"2.0", "method": "system_syncState"}' \
+  http://localhost:9944
+```
+
+**Solutions:**
+
+<Steps>
+  <Step title="Check network connectivity">
+    ```bash
+    # Verify P2P port is accessible
+    sudo ufw status
+    netstat -tuln | grep 30333
+    ```
+  </Step>
+
+  <Step title="Add bootnodes manually">
+    ```bash
+    avail-node --chain mainnet \
+      --bootnodes /ip4/BOOTNODE_IP/tcp/30333/p2p/PEER_ID
+    ```
+  </Step>
+
+  <Step title="Disable mDNS if on cloud">
+    ```bash
+    avail-node --chain mainnet --no-mdns
+    ```
+  </Step>
+
+  <Step title="Check firewall rules">
+    ```bash
+    sudo ufw allow 30333/tcp
+    ```
+  </Step>
+</Steps>
+
+#### Slow Sync Performance
+
+**Solutions:**
+
+```bash
+# Increase database cache
+avail-node --chain mainnet --db-cache 2048
+
+# Adjust max parallel downloads
+avail-node --chain mainnet --max-parallel-downloads 8
+
+# Use faster sync mode (non-validator)
+avail-node --chain mainnet --sync fast
+```
+
+#### DA Sync Errors
+
+**Error:**
+```
+Error importing block: DA commitment mismatch
+```
+
+<Warning>
+  This error indicates data availability verification failure during sync.
+</Warning>
+
+**Solutions:**
+
+```bash
+# For non-validator sync only (unsafe)
+avail-node --chain mainnet --unsafe-da-sync
+
+# Verify database integrity
+avail-node check-block --chain mainnet --block-hash 0x...
+```
+
+### Database Issues
+
+#### Database Corruption
+
+**Symptoms:**
+- "Database corruption detected" in logs
+- Node crashes on startup
+- Block import failures
+
+**Solutions:**
+
+<Steps>
+  <Step title="Stop the node">
+    ```bash
+    sudo systemctl stop avail-node
+    ```
+  </Step>
+
+  <Step title="Backup corrupted database">
+    ```bash
+    sudo mv /var/lib/avail/chains /var/lib/avail/chains.backup
+    ```
+  </Step>
+
+  <Step title="Purge and resync">
+    ```bash
+    avail-node purge-chain --chain mainnet
+    sudo systemctl start avail-node
+    ```
+  </Step>
+</Steps>
+
+#### Out of Disk Space
+
+**Error:**
+```
+No space left on device
+```
+
+**Solutions:**
+
+```bash
+# Check disk usage
+df -h /var/lib/avail
+
+# Enable state pruning (non-archive nodes)
+avail-node --chain mainnet --state-pruning 1000
+
+# Enable block pruning
+avail-node --chain mainnet --blocks-pruning 1000
+
+# Purge old database and restart
+avail-node purge-chain --chain mainnet
+```
+
+**Storage monitoring:**
+
+```bash
+# Enable automatic shutdown on low space
+avail-node --chain mainnet \
+  --db-storage-threshold 10240 \
+  --db-storage-polling-period 60
+```
+
+### Validator Issues
+
+#### Not Producing Blocks
+
+**Symptoms:**
+- Validator is in active set but not authoring blocks
+- "Proposing failed" errors
+
+**Diagnosis:**
+
+```bash
+# Check if keys are in keystore
+ls /var/lib/avail/chains/*/keystore/
+
+# Verify validator mode is enabled
+journalctl -u avail-node | grep "Role: AUTHORITY"
+
+# Check session keys
+curl -H "Content-Type: application/json" \
+  -d '{"id":1, "jsonrpc":"2.0", "method": "author_hasSessionKeys"}' \
+  http://localhost:9944
+```
+
+**Solutions:**
+
+<Steps>
+  <Step title="Verify validator flag">
+    ```bash
+    avail-node --validator --chain mainnet
+    ```
+  </Step>
+
+  <Step title="Re-insert session keys">
+    ```bash
+    avail-node key insert --base-path /var/lib/avail \
+      --chain mainnet --scheme Sr25519 \
+      --suri "YOUR_SEED" --key-type babe
+    
+    avail-node key insert --base-path /var/lib/avail \
+      --chain mainnet --scheme Ed25519 \
+      --suri "YOUR_SEED" --key-type gran
+    ```
+  </Step>
+
+  <Step title="Check session rotation">
+    Session keys may not be active yet. Wait for the next session.
+  </Step>
+</Steps>
+
+#### GRANDPA Stalled
+
+**Error:**
+```
+GRANDPA voter: finalizer failed
+```
+
+**Solutions:**
+
+```bash
+# Check GRANDPA logs
+avail-node --chain mainnet -l grandpa=debug
+
+# Verify GRANDPA keys
+ls /var/lib/avail/chains/*/keystore/ | grep gran
+
+# Restart node
+sudo systemctl restart avail-node
+```
+
+### Network Issues
+
+#### High Peer Count
+
+**Issue:**
+Too many peers causing resource exhaustion.
+
+**Solutions:**
+
+```bash
+# Limit inbound peers
+avail-node --chain mainnet --in-peers 32 --in-peers-light 50
+
+# Limit outbound peers
+avail-node --chain mainnet --out-peers 8
+```
+
+#### Connection Refused
+
+**Error:**
+```
+Connection refused on port 9944
+```
+
+**Solutions:**
+
+```bash
+# Check if node is running
+sudo systemctl status avail-node
+
+# Verify RPC is bound
+netstat -tuln | grep 9944
+
+# Enable RPC external (full nodes only)
+avail-node --chain mainnet --rpc-external --unsafe-rpc-external
+```
+
+### RPC Issues
+
+#### RPC Request Timeout
+
+**Solutions:**
+
+```bash
+# Increase request/response size limits
+avail-node --chain mainnet \
+  --rpc-max-request-size 30 \
+  --rpc-max-response-size 30
+
+# Increase connection limits
+avail-node --chain mainnet --rpc-max-connections 200
+```
+
+#### Kate RPC Not Available
+
+**Error:**
+```
+Method not found: kate_queryRows
+```
+
+**Solution:**
+
+```bash
+# Enable Kate RPC
+avail-node --chain mainnet --enable-kate-rpc
+
+# Development mode enables it automatically
+avail-node --dev
+```
+
+### Performance Issues
+
+#### High Memory Usage
+
+**Solutions:**
+
+```bash
+# Reduce database cache
+avail-node --chain mainnet --db-cache 512
+
+# Reduce runtime instances
+avail-node --chain mainnet --max-runtime-instances 4
+
+# Enable state pruning
+avail-node --chain mainnet --state-pruning 256
+```
+
+#### High CPU Usage
+
+**Diagnosis:**
+
+```bash
+# Monitor CPU per process
+top -p $(pgrep avail-node)
+
+# Check block import times
+journalctl -u avail-node | grep "Imported #"
+```
+
+**Solutions:**
+
+```bash
+# Limit CPU usage (systemd)
+# Add to service file:
+CPUQuota=200%  # 2 cores max
+
+# Reduce parallel downloads
+avail-node --chain mainnet --max-parallel-downloads 3
+```
+
+### Build Issues
+
+#### Compilation Failures
+
+**Error:**
+```
+error: linking with `cc` failed
+```
+
+**Solutions:**
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    sudo apt install build-essential git clang curl libssl-dev llvm \
+      libudev-dev make protobuf-compiler pkg-config
+    ```
+  </Step>
+
+  <Step title="Update Rust toolchain">
+    ```bash
+    rustup update
+    rustup toolchain install nightly
+    rustup target add wasm32-unknown-unknown --toolchain nightly
+    ```
+  </Step>
+
+  <Step title="Clean build">
+    ```bash
+    cargo clean
+    cargo build --release --locked
+    ```
+  </Step>
+</Steps>
+
+#### WASM Build Failures
+
+**Error:**
+```
+Runtime WASM build failed
+```
+
+**Solution:**
+
+```bash
+# Ensure correct Rust toolchain
+cat rust-toolchain.toml
+rustup show
+
+# Install WASM target
+rustup target add wasm32-unknown-unknown --toolchain nightly
+
+# Build with verbose output
+cargo build --release -vv
+```
+
+## Debugging Techniques
+
+### Enable Tracing
+
+```bash
+avail-node --chain mainnet \
+  --tracing-targets "sync=trace,consensus=trace" \
+  --tracing-receiver log
+```
+
+### Export Chain State
+
+For debugging state-related issues:
+
+```bash
+# Export state at specific block
+avail-node export-state --chain mainnet \
+  --block 0xBLOCK_HASH > state.json
+
+# Export blocks
+avail-node export-blocks --chain mainnet \
+  --from 1000 --to 2000 > blocks.bin
+```
+
+### Database Inspection
+
+```bash
+# Check database info
+avail-node chain-info --chain mainnet -d /var/lib/avail
+
+# Validate specific block
+avail-node check-block --chain mainnet \
+  --block-hash 0xBLOCK_HASH
+```
+
+### Revert Chain
+
+Revert to a previous block if corrupted:
+
+```bash
+avail-node revert --chain mainnet -d /var/lib/avail --num 100
+```
+
+<Warning>
+  Only use revert on corrupted chains. This will delete blocks from the database.
+</Warning>
+
+## Getting Help
+
+### Collecting Debug Information
+
+When reporting issues, provide:
+
+```bash
+# Node version
+avail-node --version
+
+# System info (shown on startup)
+journalctl -u avail-node | grep -A 10 "Operating system"
+
+# Recent logs
+journalctl -u avail-node -n 200 --no-pager
+
+# Health status
+curl -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"system_health","id":1}' \
+  http://localhost:9944
+
+# Sync state
+curl -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"system_syncState","id":1}' \
+  http://localhost:9944
+```
+
+### Community Support
+
+- **GitHub Issues:** [github.com/availproject/avail/issues](https://github.com/availproject/avail/issues)
+- **Discord:** Avail community server
+- **Documentation:** [docs.availproject.org](https://docs.availproject.org)
+
+### Emergency Commands
+
+#### Force Restart
+
+```bash
+# Stop node
+sudo systemctl stop avail-node
+
+# Kill if stuck
+sudo pkill -9 avail-node
+
+# Start fresh
+sudo systemctl start avail-node
+```
+
+#### Complete Reset
+
+```bash
+# Backup keys
+cp -r /var/lib/avail/chains/*/keystore ~/keystore.backup
+
+# Purge everything
+avail-node purge-chain --chain mainnet -d /var/lib/avail
+
+# Restore keys
+cp -r ~/keystore.backup /var/lib/avail/chains/*/keystore
+
+# Restart
+sudo systemctl restart avail-node
+```
+
+## Common Error Messages
+
+### "Transaction pool too large"
+
+**Solution:**
+```bash
+avail-node --chain mainnet --pool-limit 16384 --pool-kbytes 40960
+```
+
+### "Cannot start authoring"
+
+**Cause:** Missing session keys or validator not in active set.
+
+**Solution:** Verify keys are inserted and validator is bonded.
+
+### "Failed to import block"
+
+**Cause:** Various reasons - DA verification, state corruption, consensus issues.
+
+**Solution:** Check specific error message in logs and enable debug logging.
+
+### "Networking failure"
+
+**Cause:** Firewall, NAT issues, or misconfigured bootnodes.
+
+**Solution:** Verify network configuration and add `--allow-private-ip` if on local network.
+
+## Prevention
+
+### Regular Maintenance
+
+<Steps>
+  <Step title="Monitor disk space weekly">
+    ```bash
+    df -h /var/lib/avail
+    ```
+  </Step>
+
+  <Step title="Review logs daily">
+    ```bash
+    journalctl -u avail-node --since yesterday | grep -i error
+    ```
+  </Step>
+
+  <Step title="Update node regularly">
+    Follow release announcements and update within the upgrade window.
+  </Step>
+
+  <Step title="Test backups quarterly">
+    Verify you can restore from backups.
+  </Step>
+</Steps>
+
+### Monitoring Checklist
+
+- [ ] Prometheus alerting configured
+- [ ] Disk space monitoring active
+- [ ] Log rotation enabled
+- [ ] Peer count within normal range
+- [ ] Block production regular (validators)
+- [ ] Sync status checked daily
+- [ ] System resource usage monitored

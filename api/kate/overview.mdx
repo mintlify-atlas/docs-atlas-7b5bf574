@@ -1,0 +1,172 @@
+---
+title: Kate RPC API Overview
+description: Overview of the Kate RPC API for querying data availability proofs and commitments
+---
+
+The Kate RPC API provides methods for querying data availability proofs, commitments, and block metadata from the Avail blockchain. These endpoints are essential for light clients and validators to verify data availability without downloading entire blocks.
+
+## Enabling Kate RPC
+
+Kate RPC endpoints are disabled by default. To enable them, start your Avail node with the `--enable-kate-rpc` flag:
+
+```bash
+avail-node --enable-kate-rpc
+```
+
+## Configuration
+
+The Kate RPC service can be configured through the `Deps` struct with the following parameters:
+
+<ParamField path="max_cells_size" type="usize" default="10000">
+  The maximum number of cells that can be requested in a single query. This limit applies to `kate_queryProof` and `kate_queryMultiProof` methods.
+  
+  Configure via the `--kate-max-cells-size` command-line flag.
+</ParamField>
+
+<ParamField path="rpc_enabled" type="bool" default="false">
+  Enable or disable Kate RPC endpoints.
+  
+  Set via the `--enable-kate-rpc` flag.
+</ParamField>
+
+<ParamField path="rpc_metrics_enabled" type="bool" default="false">
+  Enable metrics collection for Kate RPC calls. Only use if you understand the performance implications.
+</ParamField>
+
+## Available Methods
+
+The Kate RPC API provides the following methods:
+
+### Query Methods
+
+- [kate_queryRows](/api/kate/query-rows) - Query entire rows of the data availability matrix
+- [kate_queryProof](/api/kate/query-proof) - Query individual cell proofs for data verification
+- [kate_queryMultiProof](/api/kate/query-proof#kate_querymultiproof) - Query optimized multi-proofs for multiple cells
+- [kate_queryDataProof](/api/kate/query-data-proof) - Query Merkle proofs for specific transactions
+- [kate_blockLength](/api/kate/block-length) - Query block dimensions and parameters
+
+## Type Definitions
+
+The Kate RPC API uses the following core types:
+
+### Rows
+
+```rust
+pub type MaxRows = ConstU32<64>;
+pub type Rows = BoundedVec<u32, MaxRows>;
+```
+
+A bounded vector of row indices, limited to a maximum of 64 rows per request.
+
+### Cells
+
+```rust
+pub type MaxCells = ConstU32<10_000>;
+pub type Cells = BoundedVec<Cell, MaxCells>;
+```
+
+A bounded vector of cell coordinates, limited to the configured `max_cells_size` (default 10,000).
+
+Each `Cell` contains:
+- `row` - Row index in the data matrix
+- `col` - Column index in the data matrix
+
+### Response Types
+
+#### GRow
+
+```rust
+pub type GRawScalar = U256;
+pub type GRow = Vec<GRawScalar>;
+```
+
+A row of the data availability matrix, represented as a vector of 256-bit scalars.
+
+#### GDataProof
+
+```rust
+pub type GDataProof = (GRawScalar, GProof);
+pub struct GProof([u8; 48]);
+```
+
+A data proof consisting of:
+- Cell data as a 256-bit scalar
+- KZG proof as a 48-byte array
+
+#### GMultiProof
+
+```rust
+pub type GMultiProof = (Vec<GRawScalar>, GProof);
+```
+
+An optimized multi-proof for multiple cells:
+- Vector of cell data as 256-bit scalars
+- Single aggregated KZG proof
+
+#### GCellBlock
+
+```rust
+pub struct GCellBlock {
+    pub start_x: u32,
+    pub start_y: u32,
+    pub end_x: u32,
+    pub end_y: u32,
+}
+```
+
+Defines a rectangular region in the data matrix.
+
+## Error Handling
+
+Kate RPC methods return JSON-RPC errors with the following error code:
+
+- **Error Code 1** (`KateRPCError`) - Generic Kate RPC error
+
+Error messages include specific details about the failure:
+
+- `"Requested block {hash} is not finalized"` - Block must be finalized before querying
+- `"Requested block {hash} has empty commitments"` - Block contains no data commitments
+- `"Cannot query ({n}) more than {max} amount of cells per request"` - Exceeds max_cells_size limit
+- `"Cannot fetch tx data at tx index {idx} at block {hash}"` - Transaction index out of range
+
+## Block Finalization Requirement
+
+All Kate RPC methods require the queried block to be **finalized**. Queries for unfinalized blocks will return an error. This ensures that the returned proofs and commitments are immutable and can be safely relied upon.
+
+## JSON-RPC Format
+
+All Kate RPC methods use standard JSON-RPC 2.0 format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "kate_methodName",
+  "params": [...],
+  "id": 1
+}
+```
+
+The default endpoint is `http://localhost:9944` for HTTP or `ws://localhost:9944` for WebSocket connections.
+
+## Use Cases
+
+### Light Clients
+
+Light clients use Kate RPC to:
+- Verify data availability without downloading full blocks
+- Sample random cells to detect data withholding
+- Validate specific transactions using data proofs
+
+### Data Availability Sampling
+
+Validators and fishermen use these endpoints to:
+- Perform DAS (Data Availability Sampling) on committed data
+- Generate fraud proofs when detecting invalid commitments
+- Reconstruct missing data from available cells
+
+### Application-Specific Queries
+
+Applications can:
+- Query specific transaction data with Merkle proofs
+- Verify inclusion of application data in blocks
+- Efficiently download only relevant portions of blocks

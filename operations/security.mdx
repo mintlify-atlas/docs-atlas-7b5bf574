@@ -1,0 +1,464 @@
+---
+title: Security Best Practices
+description: Security guidelines for running Avail validators and full nodes
+---
+
+## Overview
+
+Operating an Avail node, especially a validator, requires careful attention to security. This guide covers binary verification, key management, network security, and operational best practices.
+
+## Binary Verification
+
+### GPG Signature Verification
+
+All official Avail releases are GPG signed. Always verify binaries before running them.
+
+<Steps>
+  <Step title="Import the public key">
+    Replace `vX.Y.Z` with the actual release version:
+    ```bash
+    curl -s https://github.com/availproject/avail/releases/download/vX.Y.Z/gpg-public-key.asc | gpg --import
+    ```
+  </Step>
+
+  <Step title="Verify the binary signature">
+    ```bash
+    gpg --verify DOWNLOADED_BINARY.tar.gz.sig DOWNLOADED_BINARY.tar.gz
+    ```
+    
+    Expected output:
+    ```
+    gpg: Good signature from "Your Project Release Key <email@example.com>"
+    ```
+  </Step>
+
+  <Step title="Verify the checksum file">
+    ```bash
+    gpg --verify YOUR_DOWNLOADED_FILE.tar.gz.sha256.sig YOUR_DOWNLOADED_FILE.tar.gz.sha256
+    ```
+  </Step>
+
+  <Step title="Verify the checksum">
+    ```bash
+    sha256sum -c YOUR_DOWNLOADED_FILE.tar.gz.sha256
+    ```
+    
+    Expected output:
+    ```
+    YOUR_DOWNLOADED_FILE.tar.gz: OK
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Never run unverified binaries from unofficial sources. A compromised binary can lead to complete loss of validator funds.
+</Warning>
+
+## Key Management
+
+### Session Keys
+
+Validators use multiple session keys for different consensus operations:
+
+- **BABE keys (Sr25519)** - Block production
+- **GRANDPA keys (Ed25519)** - Finality voting
+- **ImOnline keys** - Heartbeat messages
+- **Authority Discovery keys** - Peer discovery
+
+### Generating Session Keys
+
+#### Generate a new wallet
+
+```bash
+avail-node key generate --scheme Sr25519 --output-type json -w 24 > wallet.json
+```
+
+<Note>
+  Use `-w 24` for a 24-word mnemonic phrase. Store this securely offline.
+</Note>
+
+#### Extract the secret phrase
+
+```bash
+cat wallet.json | jq -r '.secretPhrase' > wallet.secret
+chmod 600 wallet.secret
+```
+
+#### Generate Ed25519 keys from the same seed
+
+```bash
+avail-node key inspect --scheme Ed25519 --output-type json $(cat wallet.secret) > wallet.ed25519.json
+```
+
+### Inserting Keys into the Keystore
+
+<Steps>
+  <Step title="Insert BABE key (Sr25519)">
+    ```bash
+    avail-node key insert \
+      --base-path /var/lib/avail \
+      --chain mainnet \
+      --scheme Sr25519 \
+      --suri "$(cat wallet.secret)" \
+      --key-type babe
+    ```
+  </Step>
+
+  <Step title="Insert GRANDPA key (Ed25519)">
+    ```bash
+    avail-node key insert \
+      --base-path /var/lib/avail \
+      --chain mainnet \
+      --scheme Ed25519 \
+      --suri "$(cat wallet.secret)" \
+      --key-type gran
+    ```
+  </Step>
+
+  <Step title="Verify keys are inserted">
+    ```bash
+    ls /var/lib/avail/chains/*/keystore/
+    ```
+  </Step>
+</Steps>
+
+### Node Keys (libp2p)
+
+Generate a unique node key for P2P networking:
+
+```bash
+avail-node key generate-node-key 2> node.public.key 1> node.private.key
+```
+
+**Secure the private key:**
+```bash
+chmod 600 node.private.key
+sudo chown avail:avail node.private.key
+```
+
+**Use the node key:**
+```bash
+avail-node --node-key-file /path/to/node.private.key
+```
+
+### Key Storage Security
+
+<Warning>
+  **Critical Security Practices:**
+  
+  1. **Never expose private keys** - Keep all private keys encrypted and offline
+  2. **Backup mnemonics securely** - Store in multiple secure locations (hardware wallets, encrypted USB drives)
+  3. **Restrict file permissions** - `chmod 600` for all key files
+  4. **Use separate keys** - Never reuse validator keys across networks
+  5. **Hardware security modules** - Consider using HSMs for production validators
+</Warning>
+
+### Key Rotation
+
+For validator key rotation:
+
+1. Generate new session keys on your node:
+   ```bash
+   curl -H "Content-Type: application/json" \
+     -d '{"id":1, "jsonrpc":"2.0", "method": "author_rotateKeys"}' \
+     http://localhost:9944
+   ```
+
+2. Submit the new keys via the `session.setKeys` extrinsic
+3. Keys will be active in the next session
+
+## Network Security
+
+### Firewall Configuration
+
+Configure firewalls to restrict access:
+
+```bash
+# Allow P2P traffic
+sudo ufw allow 30333/tcp
+
+# Allow RPC only from localhost (for validators)
+sudo ufw deny 9944/tcp
+
+# Allow Prometheus only from monitoring server
+sudo ufw allow from MONITORING_IP to any port 9615
+
+# Enable firewall
+sudo ufw enable
+```
+
+### Validator-Specific Rules
+
+<Warning>
+  **Validators should NEVER expose RPC endpoints publicly.**
+</Warning>
+
+```bash
+# Run validator with local RPC only
+avail-node --validator \
+  --chain mainnet \
+  --rpc-port 9944 \
+  --port 30333 \
+  --prometheus-port 9615
+```
+
+**Do NOT use these flags on validators:**
+- `--rpc-external`
+- `--unsafe-rpc-external`
+- `--rpc-cors=all`
+- `--rpc-methods=unsafe`
+
+### Sentry Node Architecture
+
+For production validators, use a sentry node architecture:
+
+```
+┌─────────────┐
+│   Public    │
+│  Internet   │
+└──────┬──────┘
+       │
+┌──────▼──────────┐
+│  Sentry Nodes   │ (Public RPC, P2P)
+│  (Full Nodes)   │
+└──────┬──────────┘
+       │
+┌──────▼──────────┐
+│   Validators    │ (Private, reserved peers only)
+│  (No public     │
+│   endpoints)    │
+└─────────────────┘
+```
+
+**Configure validator to only connect to sentries:**
+
+```bash
+avail-node --validator \
+  --chain mainnet \
+  --reserved-nodes /ip4/SENTRY_IP/tcp/30333/p2p/SENTRY_PEER_ID \
+  --reserved-only \
+  --no-mdns
+```
+
+## RPC Security
+
+### Safe vs Unsafe Methods
+
+<Accordion title="Safe RPC methods">
+  - `system_health`, `system_name`, `system_version`
+  - `chain_getBlock`, `chain_getHeader`
+  - `state_getStorage`, `state_getMetadata`
+  - Kate RPC methods (read-only)
+</Accordion>
+
+<Accordion title="Unsafe RPC methods">
+  - `author_submitExtrinsic` - Can submit transactions
+  - `author_insertKey` - Can insert keys
+  - `system_addReservedPeer` - Can modify peer list
+  - All `author_*` methods
+</Accordion>
+
+### RPC Method Restrictions
+
+```bash
+# Only expose safe methods
+avail-node --rpc-methods=safe
+
+# Rate limiting
+avail-node --rpc-rate-limit 100  # 100 calls/minute per connection
+
+# Connection limits
+avail-node --rpc-max-connections 100
+```
+
+### Using RPC Proxy
+
+For public RPC endpoints, use a reverse proxy (nginx, Cloudflare) to:
+- Filter unsafe methods
+- Implement rate limiting
+- Add DDoS protection
+- Enable TLS/SSL
+
+## System Security
+
+### User Isolation
+
+Run the node as a dedicated user:
+
+```bash
+# Create dedicated user
+sudo useradd -m -s /bin/bash avail
+
+# Set directory permissions
+sudo chown -R avail:avail /var/lib/avail
+
+# Run as avail user
+sudo -u avail avail-node --chain mainnet -d /var/lib/avail
+```
+
+### Systemd Hardening
+
+Secure systemd service configuration:
+
+```ini
+[Service]
+Type=simple
+User=avail
+Group=avail
+ExecStart=/usr/local/bin/avail-node --validator --chain mainnet -d /var/lib/avail
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/avail
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LimitNOFILE=4096
+
+# Resource limits
+MemoryMax=16G
+CPUQuota=200%
+
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### System Updates
+
+<Steps>
+  <Step title="Keep system updated">
+    ```bash
+    sudo apt update && sudo apt upgrade -y
+    ```
+  </Step>
+
+  <Step title="Enable automatic security updates">
+    ```bash
+    sudo apt install unattended-upgrades
+    sudo dpkg-reconfigure -plow unattended-upgrades
+    ```
+  </Step>
+
+  <Step title="Monitor security advisories">
+    Subscribe to Avail security announcements and GitHub release notifications.
+  </Step>
+</Steps>
+
+## Monitoring & Alerting
+
+### Security Monitoring
+
+Monitor these security-relevant metrics:
+
+```yaml
+# Failed login attempts
+- alert: ExcessiveFailedLogins
+  expr: rate(node_auth_failures_total[5m]) > 5
+
+# Unusual peer connections
+- alert: SuspiciousPeerCount
+  expr: substrate_peers_count > 100 or substrate_peers_count < 3
+
+# Validator missing blocks
+- alert: ValidatorOffline
+  expr: substrate_block_height - substrate_finalized_height > 10
+```
+
+### Log Monitoring
+
+Monitor logs for suspicious activity:
+
+```bash
+# Watch for connection attempts
+journalctl -u avail-node -f | grep -i "connection"
+
+# Monitor for errors
+journalctl -u avail-node --since "1 hour ago" | grep -i "error\|warn"
+```
+
+## Backup & Recovery
+
+### Critical Data to Backup
+
+1. **Session keys** - `/var/lib/avail/chains/*/keystore/`
+2. **Node key** - Private libp2p key
+3. **Wallet mnemonics** - Offline encrypted backup
+4. **Chain specification** - Custom chainspec files
+
+### Backup Script
+
+```bash
+#!/bin/bash
+BACKUP_DIR="/secure/backup/avail-$(date +%Y%m%d)"
+mkdir -p "$BACKUP_DIR"
+
+# Backup keystore
+cp -r /var/lib/avail/chains/*/keystore "$BACKUP_DIR/"
+
+# Backup node key
+cp /var/lib/avail/chains/*/network/secret_ed25519 "$BACKUP_DIR/"
+
+# Encrypt backup
+tar czf - "$BACKUP_DIR" | gpg --encrypt --recipient your@email.com > "$BACKUP_DIR.tar.gz.gpg"
+
+# Remove unencrypted backup
+rm -rf "$BACKUP_DIR"
+```
+
+## Incident Response
+
+### Compromise Response Checklist
+
+If you suspect a security breach:
+
+<Steps>
+  <Step title="Isolate the node">
+    ```bash
+    sudo systemctl stop avail-node
+    sudo ufw deny in
+    ```
+  </Step>
+
+  <Step title="Rotate all keys">
+    Generate new session keys and node keys immediately.
+  </Step>
+
+  <Step title="Audit logs">
+    Review system logs, auth logs, and node logs for suspicious activity.
+  </Step>
+
+  <Step title="Preserve evidence">
+    Take disk snapshots before making changes for forensic analysis.
+  </Step>
+
+  <Step title="Report">
+    Contact the Avail security team if the issue affects the network.
+  </Step>
+</Steps>
+
+## Security Checklist
+
+- [ ] Binary signatures verified before installation
+- [ ] Session keys generated securely and backed up offline
+- [ ] Node running as non-root user
+- [ ] Firewall configured to block unnecessary ports
+- [ ] RPC endpoints not exposed publicly (validators)
+- [ ] Sentry node architecture implemented (production validators)
+- [ ] System updates automated
+- [ ] Monitoring and alerting configured
+- [ ] Regular backups encrypted and tested
+- [ ] Incident response plan documented
+- [ ] Security advisories monitored
+
+## Additional Resources
+
+- [Substrate Security Best Practices](https://docs.substrate.io/maintain/)
+- [Polkadot Validator Security](https://wiki.polkadot.network/docs/maintain-guides-secure-validator)
+- Avail Security Advisories (GitHub Security tab)

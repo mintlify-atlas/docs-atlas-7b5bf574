@@ -1,0 +1,430 @@
+---
+title: Docker Deployment
+description: Run Avail node using Docker containers
+---
+
+Deploy Avail node using Docker for simplified setup and containerized operation. This approach provides consistent environments across different systems and simplifies deployment.
+
+## Quick Start
+
+The fastest way to get started with Docker:
+
+```bash
+# Pull the official image
+docker pull availj/avail:latest
+
+# Create data directory
+mkdir output
+
+# Run the node
+docker run --rm -p 30333:30333 -p 9944:9944 -v ./output:/output availj/avail:latest --chain mainnet -d /output
+```
+
+## Building from Source
+
+### Build the Docker Image
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/availproject/avail.git
+    cd avail
+    ```
+  </Step>
+
+  <Step title="Build Image">
+    Build the Docker image using the provided Dockerfile:
+    
+    ```bash
+    docker build -t availnode -f ./dockerfiles/avail-node.Dockerfile .
+    ```
+    
+    <Note>
+    The build process uses a multi-stage Dockerfile to minimize the final image size. Build time is typically 30-60 minutes.
+    </Note>
+  </Step>
+</Steps>
+
+### Dockerfile Overview
+
+The official Dockerfile uses a two-phase build:
+
+**Phase 1: Builder**
+- Base: `debian:12.12-slim`
+- Installs build dependencies: `build-essential`, `git`, `clang`, `curl`, `libssl-dev`, `llvm`, `libudev-dev`, `make`, `cmake`, `protobuf-compiler`
+- Clones repository at tag `v2.3.4.0`
+- Compiles with `cargo build --locked --release`
+
+**Phase 2: Runtime**
+- Base: `debian:12.12-slim`
+- Copies only the compiled binary
+- Sets up volume mount at `/da/node-data`
+- Default command: `--chain turing --tmp --name MyAwesomeAvailNodeInContainer`
+
+## Running the Container
+
+### Network Configurations
+
+<Tabs>
+  <Tab title="Mainnet">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --chain mainnet -d /output
+    ```
+  </Tab>
+  
+  <Tab title="Turing Testnet">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --chain turing -d /output
+    ```
+  </Tab>
+  
+  <Tab title="Development">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --dev --rpc-methods=unsafe --unsafe-rpc-external --rpc-cors=all
+    ```
+    
+    <Warning>
+    Development mode with `--rpc-methods=unsafe` and `--unsafe-rpc-external` exposes ALL RPC methods externally. Only use this in trusted development environments.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Port Mappings
+
+The node uses three primary ports:
+
+| Port | Protocol | Purpose | Docker Flag |
+|------|----------|---------|-------------|
+| `30333` | TCP | P2P networking | `-p 30333:30333` |
+| `9944` | HTTP/WS | RPC endpoint | `-p 9944:9944` |
+| `9615` | HTTP | Prometheus metrics | `-p 9615:9615` |
+
+Example with all ports:
+
+```bash
+docker run --rm \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -p 9615:9615 \
+  -v ./output:/output \
+  availnode --chain mainnet -d /output
+```
+
+### Volume Mounts
+
+#### Basic Volume Mount
+
+```bash
+docker run --rm -v ./output:/output availnode --chain mainnet -d /output
+```
+
+#### SELinux Systems (RHEL, Fedora, CentOS)
+
+<Note>
+On SELinux-enabled systems, add the `:z` flag to volumes for proper permissions:
+</Note>
+
+```bash
+docker run --rm \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v ./output:/output:z \
+  availnode --chain mainnet -d /output
+```
+
+The `:z` flag sets the SELinux context for private container use. Use `:Z` for exclusive access (not recommended for shared data).
+
+#### Named Volumes
+
+For production deployments, use Docker named volumes:
+
+```bash
+# Create named volume
+docker volume create avail-data
+
+# Run with named volume
+docker run --rm \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v avail-data:/data \
+  availnode --chain mainnet -d /data
+```
+
+## Production Deployment
+
+### Docker Compose
+
+Create `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  avail-node:
+    image: availnode:latest
+    container_name: avail-mainnet
+    restart: unless-stopped
+    ports:
+      - "30333:30333"
+      - "9944:9944"
+      - "9615:9615"
+    volumes:
+      - avail-data:/data
+    command: [
+      "--chain", "mainnet",
+      "-d", "/data",
+      "--name", "MyAvailNode",
+      "--prometheus-external"
+    ]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+volumes:
+  avail-data:
+    driver: local
+```
+
+Run with Docker Compose:
+
+```bash
+docker compose up -d
+docker compose logs -f
+docker compose down
+```
+
+### Resource Limits
+
+Set resource constraints for production:
+
+```yaml
+services:
+  avail-node:
+    # ... other config ...
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+```
+
+Or with docker run:
+
+```bash
+docker run --rm \
+  --cpus=4 \
+  --memory=8g \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v ./output:/output \
+  availnode --chain mainnet -d /output
+```
+
+## Podman Compatibility
+
+<Note>
+Podman works as a drop-in replacement for Docker. Simply replace `docker` with `podman` in all commands.
+</Note>
+
+```bash
+# Build with Podman
+podman build -t availnode -f ./dockerfiles/avail-node.Dockerfile .
+
+# Run with Podman
+podman run --rm -p 30333:30333 -p 9944:9944 -v ./output:/output:z availnode
+```
+
+### Rootless Podman
+
+Podman can run rootless, improving security:
+
+```bash
+# No sudo required
+podman run --rm \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v ./output:/output \
+  availnode --chain mainnet -d /output
+```
+
+## Container Management
+
+### Running in Detached Mode
+
+```bash
+docker run -d \
+  --name avail-node \
+  --restart unless-stopped \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v ./output:/output \
+  availnode --chain mainnet -d /output
+```
+
+### View Logs
+
+```bash
+# Follow logs
+docker logs -f avail-node
+
+# Last 100 lines
+docker logs --tail 100 avail-node
+
+# Logs since timestamp
+docker logs --since 2024-01-01T10:00:00 avail-node
+```
+
+### Execute Commands in Container
+
+```bash
+# Interactive shell
+docker exec -it avail-node /bin/bash
+
+# Check node version
+docker exec avail-node /usr/local/bin/avail-node --version
+
+# View chain info
+docker exec avail-node /usr/local/bin/avail-node chain-info --chain mainnet
+```
+
+### Stop and Remove
+
+```bash
+# Stop container
+docker stop avail-node
+
+# Remove container
+docker rm avail-node
+
+# Stop and remove
+docker rm -f avail-node
+```
+
+## Advanced Configurations
+
+### Custom Entrypoint
+
+Override the default entrypoint for debugging:
+
+```bash
+docker run -it --rm \
+  --entrypoint /bin/bash \
+  availnode
+```
+
+### Network Configuration
+
+Use custom Docker networks:
+
+```bash
+# Create network
+docker network create avail-network
+
+# Run with custom network
+docker run --rm \
+  --network avail-network \
+  -p 30333:30333 \
+  -p 9944:9944 \
+  -v ./output:/output \
+  availnode --chain mainnet -d /output
+```
+
+### Health Checks
+
+Add health checks to your deployment:
+
+```yaml
+services:
+  avail-node:
+    # ... other config ...
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9944/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission Denied on Volume Mount">
+    **SELinux systems:** Add `:z` flag to volume mount
+    
+    ```bash
+    -v ./output:/output:z
+    ```
+    
+    **User permissions:** Ensure the directory is owned by the container user (UID 1000) or has appropriate permissions:
+    
+    ```bash
+    chmod -R 755 ./output
+    ```
+  </Accordion>
+  
+  <Accordion title="Port Already in Use">
+    Check if ports are already bound:
+    
+    ```bash
+    sudo netstat -tlnp | grep -E '(9944|30333)'
+    ```
+    
+    Use different host ports:
+    
+    ```bash
+    -p 30334:30333 -p 9945:9944
+    ```
+  </Accordion>
+  
+  <Accordion title="Container Exits Immediately">
+    Check container logs for errors:
+    
+    ```bash
+    docker logs avail-node
+    ```
+    
+    Run in interactive mode to debug:
+    
+    ```bash
+    docker run -it --rm availnode --chain mainnet -d /output
+    ```
+  </Accordion>
+  
+  <Accordion title="Cannot Connect to RPC">
+    Ensure the container is running and RPC is exposed:
+    
+    ```bash
+    docker ps
+    docker logs avail-node | grep "JSON-RPC server"
+    ```
+    
+    For external access, add RPC flags:
+    
+    ```bash
+    --unsafe-rpc-external --rpc-cors=all
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Configure your node with [Configuration Options](/running/configuration)
+- Learn about [Network Configurations](/running/networks)
+- Monitor your node with Prometheus metrics

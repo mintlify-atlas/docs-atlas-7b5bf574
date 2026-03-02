@@ -1,0 +1,459 @@
+---
+title: Installation
+description: Detailed installation instructions for building Avail Node from source
+---
+
+## Overview
+
+This guide covers building the Avail Node from source. Building from source gives you access to the latest features and allows you to customize the build for your specific needs.
+
+## System requirements
+
+Before installing, ensure your system meets these requirements:
+
+### Hardware requirements
+
+- **CPU**: 4+ cores (8+ recommended for validators)
+- **RAM**: 8GB minimum (16GB+ recommended)
+- **Storage**: 200GB+ SSD (NVMe recommended for validators)
+- **Network**: Stable broadband connection (100Mbps+ for validators)
+
+### Supported operating systems
+
+- Ubuntu 20.04 LTS or newer
+- Debian 11 or newer
+- Fedora 35 or newer
+- macOS 11 (Big Sur) or newer
+- Other Linux distributions with equivalent package versions
+
+## Rust installation
+
+Avail Node requires Rust version **1.82.0** as specified in `rust-toolchain.toml`.
+
+<Steps>
+  <Step title="Install Rust toolchain">
+    Download and install Rust using rustup:
+
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+    Follow the prompts to complete installation. When asked, choose the default installation.
+  </Step>
+
+  <Step title="Configure your shell">
+    Add Rust to your system PATH:
+
+    ```bash
+    source $HOME/.cargo/env
+    ```
+
+    Add this line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to make it permanent:
+
+    ```bash
+    echo 'source $HOME/.cargo/env' >> ~/.bashrc
+    ```
+  </Step>
+
+  <Step title="Verify installation">
+    Confirm Rust is installed correctly:
+
+    ```bash
+    rustc --version
+    cargo --version
+    ```
+
+    <Note>
+      The Avail repository includes a `rust-toolchain.toml` file that automatically installs the correct Rust version (1.82.0) and required components.
+    </Note>
+  </Step>
+</Steps>
+
+## Substrate dependencies
+
+Avail is built with Substrate, which requires additional system dependencies.
+
+### Ubuntu / Debian
+
+<Steps>
+  <Step title="Update package index">
+    ```bash
+    sudo apt update
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    sudo apt install -y \
+      build-essential \
+      git \
+      clang \
+      curl \
+      libssl-dev \
+      llvm \
+      libudev-dev \
+      make \
+      cmake \
+      protobuf-compiler
+    ```
+  </Step>
+</Steps>
+
+### Fedora / RHEL / CentOS
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    sudo dnf install -y \
+      gcc \
+      gcc-c++ \
+      make \
+      git \
+      clang \
+      curl \
+      openssl-devel \
+      llvm \
+      systemd-devel \
+      cmake \
+      protobuf-compiler
+    ```
+  </Step>
+</Steps>
+
+### macOS
+
+<Steps>
+  <Step title="Install Homebrew" icon="apple">
+    If you don't have Homebrew installed:
+
+    ```bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    brew install cmake protobuf llvm
+    ```
+  </Step>
+</Steps>
+
+## Building Avail Node
+
+Now you're ready to build the Avail Node from source.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/availproject/avail.git
+    cd avail
+    ```
+
+    To build a specific version, checkout a release tag:
+
+    ```bash
+    git checkout v2.3.4.0
+    ```
+  </Step>
+
+  <Step title="Build the release binary">
+    Build the optimized release binary:
+
+    ```bash
+    cargo build --locked --release
+    ```
+
+    <Note>
+      The first build typically takes 20-30 minutes depending on your hardware. Subsequent builds will be much faster.
+    </Note>
+
+    The `--locked` flag ensures dependencies match `Cargo.lock` exactly, and `--release` enables optimizations.
+  </Step>
+
+  <Step title="Verify the build">
+    Check that the binary was created successfully:
+
+    ```bash
+    ./target/release/avail-node --version
+    ```
+
+    You should see output like:
+
+    ```
+    avail-node 2.3.0-6c6b8912fd3
+    ```
+  </Step>
+</Steps>
+
+## Installing the binary
+
+Optionally, install the binary to your system path:
+
+```bash
+sudo cp target/release/avail-node /usr/local/bin/
+```
+
+Now you can run `avail-node` from anywhere:
+
+```bash
+avail-node --version
+```
+
+## Understanding the build process
+
+The Avail workspace consists of multiple components defined in `Cargo.toml`:
+
+- **base** - Core Avail types and utilities
+- **runtime** - Blockchain runtime logic
+- **node** - Node implementation (produces the `avail-node` binary)
+- **pallets/** - Custom pallets:
+  - `dactr` - Data availability control
+  - `mandate` - Governance mandates
+  - `system` - Custom frame-system fork
+  - `vector` - Vector commitment functionality
+- **client/basic-authorship** - Custom block authorship
+- **rpc/** - RPC implementations including Kate RPC
+- **patricia-merkle-trie** - Merkle trie implementation
+
+### Build optimizations
+
+The workspace `Cargo.toml` includes optimizations for cryptographic operations even in dev builds:
+
+```toml
+[profile.dev.package]
+blake2 = { opt-level = 3 }
+curve25519-dalek = { opt-level = 3 }
+ed25519-dalek = { opt-level = 3 }
+keccak = { opt-level = 3 }
+sha2 = { opt-level = 3 }
+# ... and more
+```
+
+This ensures reasonable performance during development.
+
+## Advanced build options
+
+### Build with specific features
+
+Build only what you need:
+
+```bash
+# Build with runtime benchmarking
+cargo build --locked --release --features runtime-benchmarks
+
+# Build with try-runtime for testing migrations
+cargo build --locked --release --features try-runtime
+```
+
+### Cross-compilation
+
+Build for different architectures:
+
+```bash
+# Add target
+rustup target add aarch64-unknown-linux-gnu
+
+# Build for ARM64
+cargo build --locked --release --target aarch64-unknown-linux-gnu
+```
+
+## Environment variables
+
+Control build behavior with these environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WASM_BUILD_TYPE` | WebAssembly build type | `release` |
+| `SKIP_WASM_BUILD` | Skip WASM runtime build | `false` |
+| `CARGO_PROFILE_RELEASE_LTO` | Enable link-time optimization | Disabled |
+
+Example:
+
+```bash
+export CARGO_PROFILE_RELEASE_LTO=fat
+cargo build --locked --release
+```
+
+<Warning>
+  Enabling LTO significantly increases build time but may improve runtime performance by 5-10%.
+</Warning>
+
+## Verifying dependencies
+
+The project uses specific versions of key dependencies:
+
+- **Polkadot SDK**: v1.7.1-patch-13 (forked version)
+- **Avail Core**: core-node-12 tag
+- **Rust**: 1.82.0 (enforced by `rust-toolchain.toml`)
+
+When you build, Rust automatically:
+
+1. Reads `rust-toolchain.toml`
+2. Installs Rust 1.82.0 if needed
+3. Installs required components: `rustfmt`, `clippy`, `rust-src`
+4. Adds WASM target: `wasm32-unknown-unknown`
+
+## Building with Docker
+
+If you prefer containerized builds, use the provided Dockerfile:
+
+```bash
+docker build -t avail-builder -f Dockerfile .
+```
+
+This uses a multi-stage build process:
+
+1. **Builder stage**: Debian 12.12-slim with full build toolchain
+2. **Runtime stage**: Minimal Debian image with only the binary
+
+The resulting image is optimized for size (< 200MB vs ~5GB build environment).
+
+## Development build
+
+For development, use a debug build which compiles much faster:
+
+```bash
+cargo build
+./target/debug/avail-node --dev
+```
+
+<Note>
+  Debug builds run 10-100x slower than release builds. Only use for rapid development iteration.
+</Note>
+
+## Building specific packages
+
+Build individual workspace members:
+
+```bash
+# Build only the runtime
+cargo build -p da-runtime --release
+
+# Build Kate RPC
+cargo build -p kate-rpc --release
+```
+
+## Running tests
+
+Verify your build with the test suite:
+
+```bash
+# Run all tests
+cargo test --workspace
+
+# Run tests for specific package
+cargo test -p da-runtime
+
+# Run with release optimizations (slower build, faster execution)
+cargo test --workspace --release
+```
+
+## Benchmarking
+
+The project includes comprehensive benchmarking tools:
+
+### Runtime benchmarks
+
+```bash
+cargo bench --bench header_kate_commitment_cri
+cargo bench --bench header_kate_commitment_divan
+```
+
+### Instruction-level analysis
+
+```bash
+cargo bench --bench header_kate_commitment_iai_callgrind
+cargo bench --bench header_kate_commitment_iai
+```
+
+These benchmarks use `iai` and `iai-callgrind` for detailed performance profiling including cache hits and instruction counts.
+
+## Troubleshooting
+
+### Build fails with linker errors
+
+Ensure all system dependencies are installed:
+
+```bash
+# Ubuntu/Debian
+sudo apt install -y build-essential clang libssl-dev
+
+# Fedora
+sudo dnf install -y gcc gcc-c++ clang openssl-devel
+```
+
+### WASM build fails
+
+Add the WASM target explicitly:
+
+```bash
+rustup target add wasm32-unknown-unknown --toolchain 1.82.0
+```
+
+### Out of memory during build
+
+Reduce parallel compilation:
+
+```bash
+cargo build --locked --release -j 2
+```
+
+Or limit memory per job:
+
+```bash
+export CARGO_BUILD_JOBS=2
+cargo build --locked --release
+```
+
+### Protobuf compiler not found
+
+Install the protobuf compiler:
+
+```bash
+# Ubuntu/Debian
+sudo apt install -y protobuf-compiler
+
+# macOS
+brew install protobuf
+
+# Fedora
+sudo dnf install -y protobuf-compiler
+```
+
+## Keeping your installation updated
+
+Update to the latest version:
+
+```bash
+cd avail
+git fetch --all --tags
+git checkout <latest-tag>
+cargo build --locked --release
+```
+
+<Warning>
+  Always check the release notes before upgrading. Some releases may require chain data migration or configuration changes.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Run your newly built node
+  </Card>
+  <Card title="Configuration" icon="gear">
+    Learn about node configuration options
+  </Card>
+  <Card title="Validator setup" icon="shield">
+    Configure your node as a validator
+  </Card>
+  <Card title="CLI reference" icon="terminal">
+    Complete command-line reference
+  </Card>
+</CardGroup>
+
+## Additional resources
+
+- [Substrate Documentation](https://docs.substrate.io/install/) - Detailed Substrate dependency guide
+- [Rust Installation](https://www.rust-lang.org/learn/get-started) - Official Rust installation guide
+- [Avail Wiki](https://github.com/availproject/avail/wiki) - Advanced topics and build configurations

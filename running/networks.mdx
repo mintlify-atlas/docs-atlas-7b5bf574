@@ -1,0 +1,431 @@
+---
+title: Network Configurations
+description: Connect to Avail Mainnet, Turing testnet, or run a local development chain
+---
+
+Avail supports multiple network configurations for different use cases. Choose the network that best fits your needs: production Mainnet, testing on Turing, or local development.
+
+## Available Networks
+
+<CardGroup cols={2}>
+  <Card title="Mainnet" icon="globe">
+    Production network for live operations
+  </Card>
+  <Card title="Turing Testnet" icon="flask">
+    Public testnet for testing and experimentation
+  </Card>
+  <Card title="Development" icon="code">
+    Local single-node chain for development
+  </Card>
+  <Card title="DevNet0" icon="network-wired">
+    Development network for testing
+  </Card>
+</CardGroup>
+
+## Mainnet
+
+The Avail Mainnet is the production blockchain network.
+
+### Connection
+
+<Tabs>
+  <Tab title="Manual">
+    ```bash
+    cargo run --locked --release -- --chain mainnet -d ./output
+    ```
+    
+    Or with binary:
+    
+    ```bash
+    ./avail-node --chain mainnet -d ./output
+    ```
+  </Tab>
+  
+  <Tab title="Docker">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --chain mainnet -d /output
+    ```
+  </Tab>
+</Tabs>
+
+### Network Details
+
+| Parameter | Value |
+|-----------|-------|
+| Chain Spec | `mainnet` |
+| Chain ID | `avail_mainnet` |
+| Protocol ID | `Avail` |
+| Token Symbol | `AVAIL` |
+| Token Decimals | 18 |
+| SS58 Format | 42 |
+
+### Chain Specification
+
+The Mainnet chain specification is embedded in the binary at:
+```
+misc/genesis/mainnet.chain.spec.raw.json
+```
+
+### Use Cases
+
+- **Production Applications:** Deploy live dApps and services
+- **Validators:** Run validator nodes for network security
+- **Data Availability:** Store and retrieve production data
+- **Token Operations:** Real AVAIL token transactions
+
+<Warning>
+Mainnet operations use real tokens with real value. Ensure proper security measures and test on Turing first.
+</Warning>
+
+## Turing Testnet
+
+The Turing testnet is a public test network that mirrors Mainnet functionality.
+
+### Connection
+
+<Tabs>
+  <Tab title="Manual">
+    ```bash
+    cargo run --locked --release -- --chain turing -d ./output
+    ```
+    
+    Or with binary:
+    
+    ```bash
+    ./avail-node --chain turing -d ./output
+    ```
+  </Tab>
+  
+  <Tab title="Docker">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --chain turing -d /output
+    ```
+  </Tab>
+</Tabs>
+
+### Network Details
+
+| Parameter | Value |
+|-----------|-------|
+| Chain Spec | `turing` |
+| Chain ID | `avail_turing_testnet` |
+| Protocol ID | `Avail` |
+| Token Symbol | `AVAIL` |
+| Token Decimals | 18 |
+| SS58 Format | 42 |
+
+### Chain Specification
+
+The Turing chain specification is embedded in the binary at:
+```
+misc/genesis/testnet.turing.chain.spec.raw.json
+```
+
+### Use Cases
+
+- **Testing:** Test applications before Mainnet deployment
+- **Development:** Develop and debug integrations
+- **Validation Testing:** Test validator setups
+- **Educational:** Learn blockchain operations risk-free
+
+### Getting Testnet Tokens
+
+<Note>
+Testnet tokens have no real value. Request test AVAIL from the faucet or community channels.
+</Note>
+
+## Development Chain
+
+A local single-node blockchain for development and testing.
+
+### Connection
+
+<Tabs>
+  <Tab title="Manual">
+    ```bash
+    cargo run --locked --release -- --dev
+    ```
+    
+    Or with binary:
+    
+    ```bash
+    ./avail-node --dev
+    ```
+  </Tab>
+  
+  <Tab title="Docker">
+    ```bash
+    docker run --rm \
+      -p 30333:30333 \
+      -p 9944:9944 \
+      -v ./output:/output \
+      availnode --dev
+    ```
+  </Tab>
+</Tabs>
+
+### Development Features
+
+<CardGroup cols={2}>
+  <Card title="Instant Finality" icon="bolt">
+    Single authority produces and finalizes blocks immediately
+  </Card>
+  <Card title="Kate RPC Enabled" icon="plug">
+    `--dev` automatically enables `--enable-kate-rpc`
+  </Card>
+  <Card title="Temporary Storage" icon="database">
+    Uses `--tmp` unless you specify `-d` directory
+  </Card>
+  <Card title="Pre-funded Accounts" icon="wallet">
+    Alice, Bob, Charlie, etc. have initial balances
+  </Card>
+</CardGroup>
+
+### Network Details
+
+| Parameter | Value |
+|-----------|-------|
+| Chain Spec | `dev` |
+| Chain Name | `Avail Development Network` |
+| Chain ID | `avail_development_network` |
+| Chain Type | `Development` |
+| Authority | Alice (single validator) |
+
+### Custom Development Chain Name
+
+Customize the development chain name and ID:
+
+```bash
+./avail-node --dev --network-name "My Custom Dev Chain"
+```
+
+This creates a chain with ID: `my_custom_dev_chain`
+
+### Development with RPC Access
+
+Enable external RPC access for development:
+
+```bash
+./avail-node --dev \
+  --rpc-methods=unsafe \
+  --unsafe-rpc-external \
+  --rpc-cors=all
+```
+
+<Warning>
+Never use `--unsafe-rpc-external` or `--rpc-methods=unsafe` on public networks or production nodes. These flags expose dangerous RPC methods.
+</Warning>
+
+### Pre-funded Development Accounts
+
+The development chain includes these pre-funded accounts:
+
+- Alice
+- Bob  
+- Charlie
+- Dave
+- Eve
+- Ferdie
+- Alice//stash
+- Bob//stash
+- Charlie//stash
+- Dave//stash
+- Eve//stash
+- Ferdie//stash
+
+Each account starts with `100 × MIN_VALIDATOR_BOND` tokens.
+
+## Multi-Node Development
+
+### Three-Node Development Chain
+
+Run a development chain with three validators:
+
+```bash
+./avail-node --chain dev.tri
+```
+
+This launches a development network with:
+- Alice (validator)
+- Bob (validator)
+- Charlie (validator)
+
+### Custom Network Name
+
+```bash
+./avail-node --chain dev.tri --network-name "My Tri Network"
+```
+
+## DevNet0
+
+A pre-configured development network.
+
+### Connection
+
+```bash
+./avail-node --chain devnet0 -d ./output
+```
+
+### Chain Specification
+
+Loads from embedded specification:
+```
+misc/genesis/devnet.chain.raw.json
+```
+
+## Custom Chain Specifications
+
+Load a custom chain specification file:
+
+```bash
+./avail-node --chain /path/to/custom-spec.json -d ./output
+```
+
+### Export Chain Specification
+
+Export the chain specification for any network:
+
+```bash
+# Export in JSON format
+./avail-node build-spec --chain mainnet > mainnet-spec.json
+
+# Export in raw format
+./avail-node build-spec --chain mainnet --raw > mainnet-spec-raw.json
+```
+
+### Create Custom Specification
+
+<Steps>
+  <Step title="Start with Base Spec">
+    ```bash
+    ./avail-node build-spec --chain dev > custom-spec.json
+    ```
+  </Step>
+  
+  <Step title="Edit Specification">
+    Modify `custom-spec.json` to customize:
+    - Network name and ID
+    - Genesis state
+    - Initial balances
+    - Validator set
+    - Runtime parameters
+  </Step>
+  
+  <Step title="Generate Raw Spec">
+    ```bash
+    ./avail-node build-spec --chain custom-spec.json --raw > custom-raw.json
+    ```
+  </Step>
+  
+  <Step title="Launch Custom Network">
+    ```bash
+    ./avail-node --chain custom-raw.json -d ./output
+    ```
+  </Step>
+</Steps>
+
+## Network Comparison
+
+| Feature | Mainnet | Turing | Development |
+|---------|---------|--------|-------------|
+| Purpose | Production | Testing | Local Development |
+| Token Value | Real | Test Only | No Value |
+| Block Time | ~6 seconds | ~6 seconds | ~6 seconds |
+| Validators | Multiple | Multiple | Single (Alice) |
+| Persistence | Permanent | Permanent | Temporary* |
+| Kate RPC | Optional | Optional | Auto-enabled |
+| RPC Methods | Safe | Safe | Unsafe Available |
+| Public Access | Yes | Yes | Local Only |
+
+*Unless specified with `-d` flag
+
+## Telemetry
+
+All networks support telemetry reporting:
+
+### Default Telemetry
+
+Testnet telemetry endpoint:
+```
+ws://telemetry.avail.tools:8001/submit
+```
+
+### Enable Telemetry
+
+```bash
+./avail-node --chain mainnet \
+  --telemetry-url 'ws://telemetry.avail.tools:8001/submit 0'
+```
+
+### Disable Telemetry
+
+```bash
+./avail-node --chain mainnet --no-telemetry
+```
+
+## Switching Networks
+
+<Warning>
+Different networks use different databases. When switching networks, use separate data directories or purge the existing chain.
+</Warning>
+
+### Separate Data Directories
+
+```bash
+# Mainnet
+./avail-node --chain mainnet -d ./data/mainnet
+
+# Turing
+./avail-node --chain turing -d ./data/turing
+
+# Development
+./avail-node --dev -d ./data/dev
+```
+
+### Purge Chain Data
+
+```bash
+# Purge specific chain
+./avail-node purge-chain --chain mainnet -d ./output
+
+# Purge with confirmation
+./avail-node purge-chain --chain turing -d ./output -y
+```
+
+## Node Roles per Network
+
+### Full Node (Archive)
+
+```bash
+./avail-node --chain mainnet --pruning archive -d ./output
+```
+
+### Validator Node
+
+```bash
+./avail-node --chain mainnet --validator -d ./output
+```
+
+<Note>
+Validator nodes require proper key management and staking. See the validator documentation for setup details.
+</Note>
+
+### Light Client Mode
+
+```bash
+./avail-node --chain mainnet --light -d ./output
+```
+
+## Next Steps
+
+- Explore [Configuration Options](/running/configuration) for node customization
+- Learn about [Manual Setup](/running/manual-setup) for building from source
+- Deploy with [Docker](/running/docker-setup) for containerized operation

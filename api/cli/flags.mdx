@@ -1,0 +1,1051 @@
+---
+title: 'CLI flags'
+description: 'Complete reference for Avail node CLI flags and configuration options'
+keywords: ['avail', 'cli', 'flags', 'options', 'configuration']
+---
+
+This page documents all command-line flags available for the Avail node. Flags can be used with or without subcommands to configure node behavior.
+
+## Usage
+
+```bash
+avail-node [FLAGS] [OPTIONS]
+avail-node [COMMAND] [FLAGS] [OPTIONS]
+```
+
+<Info>
+Flags are specified with `--flag-name` for long form or `-f` for short form (when available). Boolean flags don't require values.
+</Info>
+
+## Node operation
+
+### Validator mode
+
+<ParamField path="validator" type="boolean" default="false">
+  Enable validator mode. The node will be started with the authority role and actively participate in consensus tasks.
+  
+  When enabled, the node will:
+  - Participate in block production (if keys are available)
+  - Vote on block finality (GRANDPA)
+  - Require session keys to be configured
+  
+  ```bash
+  avail-node --validator
+  ```
+</ParamField>
+
+### Development mode
+
+<ParamField path="dev" type="boolean" default="false">
+  Run in development mode. This is a convenience flag that sets multiple options:
+  - `--chain=dev`
+  - `--force-authoring`
+  - `--rpc-cors=all`
+  - `--alice`
+  - `--tmp`
+  
+  Also disables local peer discovery unless explicitly overridden.
+  
+  ```bash
+  avail-node --dev
+  ```
+</ParamField>
+
+<ParamField path="tmp" type="boolean" default="false">
+  Run a temporary node. Creates a temporary directory for configuration, database, node key, and keystore. The directory is deleted when the process ends.
+  
+  Automatically enabled when using `--dev` without explicit `--base-path`.
+  
+  ```bash
+  avail-node --tmp
+  ```
+</ParamField>
+
+### Chain specification
+
+<ParamField path="chain" type="string" default="">
+  Specify the chain specification. Can be:
+  - A predefined chain: `dev`, `local`, or `staging`
+  - A path to a chain spec file (JSON)
+  
+  ```bash
+  avail-node --chain dev
+  avail-node --chain /path/to/chain-spec.json
+  ```
+</ParamField>
+
+<ParamField path="network-name" type="string">
+  Override the network name and ID. This parameter updates the network name and ID for `dev` and `dev_tri` chains.
+  
+  ```bash
+  avail-node --chain dev --network-name "my-testnet"
+  ```
+</ParamField>
+
+## Storage and database
+
+### Base path
+
+<ParamField path="base-path" type="string">
+  Specify custom base path for chain data, configuration, and keys.
+  
+  Short form: `-d`
+  
+  ```bash
+  avail-node --base-path /mnt/avail-data
+  avail-node -d /mnt/avail-data
+  ```
+</ParamField>
+
+### Database configuration
+
+<ParamField path="database" type="string" default="auto">
+  Select database backend to use.
+  
+  **Possible values:**
+  - `paritydb` - ParityDb (recommended)
+  - `auto` - Detect existing database or create new ParityDb
+  - `paritydb-experimental` - Experimental ParityDb features
+  
+  ```bash
+  avail-node --database paritydb
+  ```
+</ParamField>
+
+<ParamField path="db-cache" type="number" default="128">
+  Limit the memory the database cache can use (in MiB).
+  
+  ```bash
+  avail-node --db-cache 512
+  ```
+</ParamField>
+
+### Pruning
+
+<ParamField path="state-pruning" type="string" default="256">
+  Specify the state pruning mode. This setting is permanent after first run.
+  
+  **Possible values:**
+  - `archive` - Keep state of all blocks
+  - `archive-canonical` - Keep only state of finalized blocks
+  - `<number>` - Keep state of last N finalized blocks
+  
+  ```bash
+  avail-node --state-pruning archive
+  avail-node --state-pruning 1000
+  ```
+</ParamField>
+
+<ParamField path="blocks-pruning" type="string" default="archive-canonical">
+  Specify the blocks pruning mode for block bodies and justifications.
+  
+  **Possible values:**
+  - `archive` - Keep all blocks
+  - `archive-canonical` - Keep only finalized blocks
+  - `<number>` - Keep last N finalized blocks
+  
+  ```bash
+  avail-node --blocks-pruning archive
+  ```
+</ParamField>
+
+### Storage monitoring
+
+<ParamField path="db-storage-threshold" type="number" default="1024">
+  Required available space on database storage (in MiB). Node gracefully terminates if available space drops below this threshold.
+  
+  Set to `0` to disable monitoring.
+  
+  ```bash
+  avail-node --db-storage-threshold 2048
+  ```
+</ParamField>
+
+<ParamField path="db-storage-polling-period" type="number" default="5">
+  How often available space is polled (in seconds).
+  
+  ```bash
+  avail-node --db-storage-polling-period 10
+  ```
+</ParamField>
+
+## RPC configuration
+
+### RPC server
+
+<ParamField path="rpc-port" type="number" default="9944">
+  Specify JSON-RPC server TCP port.
+  
+  ```bash
+  avail-node --rpc-port 9933
+  ```
+</ParamField>
+
+<ParamField path="rpc-external" type="boolean" default="false">
+  Listen to all RPC interfaces (default is local only).
+  
+  <Warning>
+  Not all RPC methods are safe to expose publicly. Use an RPC proxy server to filter dangerous methods, or use `--unsafe-rpc-external` to suppress the warning.
+  </Warning>
+  
+  ```bash
+  avail-node --rpc-external
+  ```
+</ParamField>
+
+<ParamField path="unsafe-rpc-external" type="boolean" default="false">
+  Listen to all RPC interfaces without safety warnings. Same as `--rpc-external` but suppresses warnings.
+  
+  ```bash
+  avail-node --unsafe-rpc-external
+  ```
+</ParamField>
+
+<ParamField path="rpc-methods" type="string" default="auto">
+  RPC methods to expose.
+  
+  **Possible values:**
+  - `auto` - Expose all methods on localhost, only safe methods on external interfaces
+  - `safe` - Allow only safe subset of RPC methods
+  - `unsafe` - Expose all RPC methods (including potentially dangerous ones)
+  
+  ```bash
+  avail-node --rpc-methods safe
+  ```
+</ParamField>
+
+<ParamField path="rpc-cors" type="string" default="">
+  Specify browser origins allowed to access HTTP & WS RPC servers.
+  
+  - Comma-separated list of origins (e.g., `https://example.com`)
+  - Special value `null` for null origin
+  - Value `all` disables origin validation
+  
+  Default allows localhost and https://polkadot.js.org. In `--dev` mode, default is `all`.
+  
+  ```bash
+  avail-node --rpc-cors "https://app.example.com,https://dashboard.example.com"
+  avail-node --rpc-cors all
+  ```
+</ParamField>
+
+### RPC limits
+
+<ParamField path="rpc-max-connections" type="number" default="100">
+  Maximum number of RPC server connections.
+  
+  ```bash
+  avail-node --rpc-max-connections 200
+  ```
+</ParamField>
+
+<ParamField path="rpc-max-request-size" type="number" default="15">
+  Maximum RPC request payload size for HTTP and WebSocket (in megabytes).
+  
+  ```bash
+  avail-node --rpc-max-request-size 20
+  ```
+</ParamField>
+
+<ParamField path="rpc-max-response-size" type="number" default="15">
+  Maximum RPC response payload size for HTTP and WebSocket (in megabytes).
+  
+  ```bash
+  avail-node --rpc-max-response-size 20
+  ```
+</ParamField>
+
+<ParamField path="rpc-max-subscriptions-per-connection" type="number" default="1024">
+  Maximum concurrent subscriptions per connection.
+  
+  ```bash
+  avail-node --rpc-max-subscriptions-per-connection 2048
+  ```
+</ParamField>
+
+<ParamField path="rpc-rate-limit" type="number">
+  RPC rate limiting (calls per minute) for each connection. Disabled by default.
+  
+  ```bash
+  avail-node --rpc-rate-limit 100
+  ```
+</ParamField>
+
+<ParamField path="rpc-message-buffer-capacity-per-connection" type="number" default="64">
+  Number of messages the RPC server keeps in memory per connection.
+  
+  If buffer becomes full, server stops processing new messages until client reads underlying messages.
+  
+  ```bash
+  avail-node --rpc-message-buffer-capacity-per-connection 128
+  ```
+</ParamField>
+
+## Networking
+
+### Network identity
+
+<ParamField path="name" type="string">
+  Human-readable name for this node. Used as network node name.
+  
+  ```bash
+  avail-node --name "my-avail-node"
+  ```
+</ParamField>
+
+<ParamField path="port" type="number" default="30333">
+  Specify p2p protocol TCP port.
+  
+  ```bash
+  avail-node --port 30334
+  ```
+</ParamField>
+
+<ParamField path="listen-addr" type="string[]">
+  Listen on this multiaddress. Can be specified multiple times.
+  
+  **Defaults:**
+  - Validator: `/ip4/0.0.0.0/tcp/<port>` and `/ip6/[::]/tcp/<port>`
+  - Non-validator: `/ip4/0.0.0.0/tcp/<port>/ws` and `/ip6/[::]/tcp/<port>/ws`
+  
+  ```bash
+  avail-node --listen-addr /ip4/0.0.0.0/tcp/30333
+  ```
+</ParamField>
+
+<ParamField path="public-addr" type="string[]">
+  Public address that other nodes will use to connect. Use if there's a proxy in front of this node.
+  
+  ```bash
+  avail-node --public-addr /dns/node.example.com/tcp/30333
+  ```
+</ParamField>
+
+### Node keys
+
+<ParamField path="node-key" type="string">
+  Secret key for p2p networking. Value is parsed as hex-encoded Ed25519 32-byte secret key (64 hex chars).
+  
+  <Warning>
+  Secrets provided as command-line arguments are easily exposed. Use `--node-key-file` for production.
+  </Warning>
+  
+  ```bash
+  avail-node --node-key 0x1234567890abcdef...
+  ```
+</ParamField>
+
+<ParamField path="node-key-type" type="string" default="ed25519">
+  Crypto primitive for p2p networking.
+  
+  **Possible values:**
+  - `ed25519` - Use Ed25519
+  
+  ```bash
+  avail-node --node-key-type ed25519
+  ```
+</ParamField>
+
+<ParamField path="node-key-file" type="string">
+  File from which to read the node's secret key for p2p networking.
+  
+  File must contain unencoded 32-byte or hex-encoded Ed25519 secret key. If file doesn't exist, it's created with a new key.
+  
+  ```bash
+  avail-node --node-key-file /path/to/node-key
+  ```
+</ParamField>
+
+### Peer connections
+
+<ParamField path="bootnodes" type="string[]">
+  Specify a list of bootnodes for initial peer discovery.
+  
+  ```bash
+  avail-node --bootnodes /dns/bootnode1.example.com/tcp/30333/p2p/12D3KooW...
+  ```
+</ParamField>
+
+<ParamField path="reserved-nodes" type="string[]">
+  Specify a list of reserved node addresses.
+  
+  ```bash
+  avail-node --reserved-nodes /dns/reserved1.example.com/tcp/30333/p2p/12D3KooW...
+  ```
+</ParamField>
+
+<ParamField path="reserved-only" type="boolean" default="false">
+  Only synchronize with reserved nodes. Also disables automatic peer discovery.
+  
+  <Info>
+  TCP connections may still be established with non-reserved nodes, particularly for validators.
+  </Info>
+  
+  ```bash
+  avail-node --reserved-only
+  ```
+</ParamField>
+
+<ParamField path="in-peers" type="number" default="32">
+  Maximum number of inbound full node peers.
+  
+  ```bash
+  avail-node --in-peers 50
+  ```
+</ParamField>
+
+<ParamField path="in-peers-light" type="number" default="100">
+  Maximum number of inbound light node peers.
+  
+  ```bash
+  avail-node --in-peers-light 200
+  ```
+</ParamField>
+
+<ParamField path="out-peers" type="number" default="8">
+  Number of outgoing connections to maintain.
+  
+  ```bash
+  avail-node --out-peers 16
+  ```
+</ParamField>
+
+### Network discovery
+
+<ParamField path="no-mdns" type="boolean" default="false">
+  Disable mDNS local network discovery. Automatically enabled with `--dev`.
+  
+  ```bash
+  avail-node --no-mdns
+  ```
+</ParamField>
+
+<ParamField path="discover-local" type="boolean">
+  Enable peer discovery on local networks.
+  
+  Default is `true` for `--dev` or when chain type is Local/Development, otherwise `false`.
+  
+  ```bash
+  avail-node --discover-local
+  ```
+</ParamField>
+
+<ParamField path="allow-private-ip" type="boolean">
+  Always accept connections to private IPv4/IPv6 addresses.
+  
+  Enabled by default for local chains or `--dev` mode.
+  
+  ```bash
+  avail-node --allow-private-ip
+  ```
+</ParamField>
+
+<ParamField path="no-private-ip" type="boolean">
+  Always forbid connections to private IPv4/IPv6 addresses.
+  
+  Enabled by default for live chains. Doesn't apply to `--reserved-nodes` or `--bootnodes`.
+  
+  ```bash
+  avail-node --no-private-ip
+  ```
+</ParamField>
+
+### Kademlia DHT
+
+<ParamField path="kademlia-disjoint-query-paths" type="boolean" default="false">
+  Require iterative Kademlia DHT queries to use disjoint paths for increased resiliency against adversarial nodes.
+  
+  ```bash
+  avail-node --kademlia-disjoint-query-paths
+  ```
+</ParamField>
+
+<ParamField path="kademlia-replication-factor" type="number" default="20">
+  Kademlia replication factor - determines to how many closest peers a record is replicated.
+  
+  ```bash
+  avail-node --kademlia-replication-factor 25
+  ```
+</ParamField>
+
+<ParamField path="ipfs-server" type="boolean" default="false">
+  Join the IPFS network and serve transactions over bitswap protocol.
+  
+  ```bash
+  avail-node --ipfs-server
+  ```
+</ParamField>
+
+### Syncing
+
+<ParamField path="sync" type="string" default="full">
+  Blockchain syncing mode.
+  
+  **Possible values:**
+  - `full` - Full sync (download and verify all blocks)
+  - `fast` - Download blocks without executing, download latest state with proofs
+  - `fast-unsafe` - Download blocks without executing, download latest state without proofs
+  - `warp` - Prove finality and download latest state
+  
+  ```bash
+  avail-node --sync warp
+  ```
+</ParamField>
+
+<ParamField path="max-blocks-per-request" type="number" default="64">
+  Maximum number of blocks per request. Reduce if experiencing block request timeouts on slow connections.
+  
+  ```bash
+  avail-node --max-blocks-per-request 32
+  ```
+</ParamField>
+
+<ParamField path="max-parallel-downloads" type="number" default="5">
+  Maximum number of peers to request same blocks from in parallel.
+  
+  Decrease to save bandwidth but risk increased latency.
+  
+  ```bash
+  avail-node --max-parallel-downloads 3
+  ```
+</ParamField>
+
+## Runtime and execution
+
+### WASM execution
+
+<ParamField path="wasm-execution" type="string" default="compiled">
+  Method for executing WASM runtime code.
+  
+  **Possible values:**
+  - `compiled` - Uses compiled runtime (recommended)
+  - `interpreted-i-know-what-i-do` - Uses interpreter (deprecated)
+  
+  ```bash
+  avail-node --wasm-execution compiled
+  ```
+</ParamField>
+
+<ParamField path="wasmtime-instantiation-strategy" type="string" default="pooling-copy-on-write">
+  WASM instantiation method. Only effective when `wasm-execution` is `compiled`.
+  
+  **Possible values:**
+  - `pooling-copy-on-write` - Pool instances, use CoW memory (fastest, default)
+  - `recreate-instance-copy-on-write` - Recreate each time, use CoW memory
+  - `pooling` - Pool instances without CoW
+  - `recreate-instance` - Recreate from scratch (very slow)
+  
+  <Info>
+  Copy-on-write strategies only supported on Linux. Falls back to non-CoW if unsupported.
+  </Info>
+  
+  ```bash
+  avail-node --wasmtime-instantiation-strategy pooling
+  ```
+</ParamField>
+
+<ParamField path="wasm-runtime-overrides" type="string">
+  Path where local WASM runtimes are stored. These override on-chain runtimes when version matches.
+  
+  ```bash
+  avail-node --wasm-runtime-overrides /path/to/wasm
+  ```
+</ParamField>
+
+### Execution strategy
+
+<ParamField path="execution" type="string">
+  Execution strategy for all contexts.
+  
+  **Possible values:**
+  - `native` - Native build (fallback to WASM)
+  - `wasm` - Only WASM build
+  - `both` - Both native and WASM
+  - `native-else-wasm` - Native with WASM fallback
+  
+  ```bash
+  avail-node --execution wasm
+  ```
+</ParamField>
+
+<ParamField path="execution-syncing" type="string">
+  Runtime execution strategy during initial sync. Same values as `--execution`.
+  
+  ```bash
+  avail-node --execution-syncing wasm
+  ```
+</ParamField>
+
+<ParamField path="execution-import-block" type="string">
+  Runtime execution strategy for general block import. Same values as `--execution`.
+  
+  ```bash
+  avail-node --execution-import-block wasm
+  ```
+</ParamField>
+
+<ParamField path="execution-block-construction" type="string">
+  Runtime execution strategy for block construction. Same values as `--execution`.
+  
+  ```bash
+  avail-node --execution-block-construction wasm
+  ```
+</ParamField>
+
+<ParamField path="execution-offchain-worker" type="string">
+  Runtime execution strategy for offchain workers. Same values as `--execution`.
+  
+  ```bash
+  avail-node --execution-offchain-worker wasm
+  ```
+</ParamField>
+
+<ParamField path="execution-other" type="string">
+  Runtime execution strategy when not syncing, importing, or constructing blocks. Same values as `--execution`.
+  
+  ```bash
+  avail-node --execution-other wasm
+  ```
+</ParamField>
+
+### Runtime configuration
+
+<ParamField path="max-runtime-instances" type="number" default="8">
+  Size of the instances cache for each runtime. Maximum is 32.
+  
+  ```bash
+  avail-node --max-runtime-instances 16
+  ```
+</ParamField>
+
+<ParamField path="runtime-cache-size" type="number" default="2">
+  Maximum number of different runtimes that can be cached.
+  
+  ```bash
+  avail-node --runtime-cache-size 4
+  ```
+</ParamField>
+
+<ParamField path="trie-cache-size" type="number" default="67108864">
+  Specify the state cache size in bytes. Set to `0` to disable.
+  
+  ```bash
+  avail-node --trie-cache-size 134217728
+  ```
+</ParamField>
+
+## Consensus
+
+### GRANDPA
+
+<ParamField path="no-grandpa" type="boolean" default="false">
+  Disable GRANDPA. Disables voter in validator mode, otherwise disables GRANDPA observer.
+  
+  ```bash
+  avail-node --no-grandpa
+  ```
+</ParamField>
+
+<ParamField path="grandpa-justification-period" type="number" default="512">
+  Interval (in blocks) at which GRANDPA justifications are imported or generated and stored.
+  
+  Must be between 1 and 4,294,967,295.
+  
+  ```bash
+  avail-node --grandpa-justification-period 1024
+  ```
+</ParamField>
+
+### Authoring
+
+<ParamField path="force-authoring" type="boolean" default="false">
+  Enable authoring even when offline or not connected to peers.
+  
+  ```bash
+  avail-node --force-authoring
+  ```
+</ParamField>
+
+## Transaction pool
+
+<ParamField path="pool-limit" type="number" default="8192">
+  Maximum number of transactions in the transaction pool.
+  
+  ```bash
+  avail-node --pool-limit 16384
+  ```
+</ParamField>
+
+<ParamField path="pool-kbytes" type="number" default="20480">
+  Maximum number of kilobytes of all transactions stored in the pool.
+  
+  ```bash
+  avail-node --pool-kbytes 40960
+  ```
+</ParamField>
+
+<ParamField path="tx-ban-seconds" type="number" default="1800">
+  How long a transaction is banned (in seconds) if considered invalid.
+  
+  ```bash
+  avail-node --tx-ban-seconds 3600
+  ```
+</ParamField>
+
+## Offchain workers
+
+<ParamField path="offchain-worker" type="string" default="when-authority">
+  Execute offchain workers on every block.
+  
+  **Possible values:**
+  - `always` - Always enable offchain worker
+  - `never` - Never enable offchain worker
+  - `when-authority` - Only when running as validator/collator
+  
+  ```bash
+  avail-node --offchain-worker always
+  ```
+</ParamField>
+
+<ParamField path="enable-offchain-indexing" type="boolean" default="false">
+  Enable offchain indexing API. Allows runtime to write directly to offchain workers DB during block import.
+  
+  ```bash
+  avail-node --enable-offchain-indexing true
+  ```
+</ParamField>
+
+## Telemetry and monitoring
+
+### Telemetry
+
+<ParamField path="no-telemetry" type="boolean" default="false">
+  Disable connecting to Substrate telemetry server. Telemetry is enabled by default on global chains.
+  
+  ```bash
+  avail-node --no-telemetry
+  ```
+</ParamField>
+
+<ParamField path="telemetry-url" type="string[]">
+  URL of telemetry server to connect to. Can be specified multiple times.
+  
+  Format: `URL VERBOSITY` where verbosity is 0-9 (0 = least verbose).
+  
+  ```bash
+  avail-node --telemetry-url 'wss://telemetry.example.com 0'
+  ```
+</ParamField>
+
+### Prometheus
+
+<ParamField path="prometheus-port" type="number" default="9615">
+  Specify Prometheus exporter TCP port.
+  
+  ```bash
+  avail-node --prometheus-port 9616
+  ```
+</ParamField>
+
+<ParamField path="prometheus-external" type="boolean" default="false">
+  Expose Prometheus exporter on all interfaces (default is local only).
+  
+  ```bash
+  avail-node --prometheus-external
+  ```
+</ParamField>
+
+<ParamField path="no-prometheus" type="boolean" default="false">
+  Disable Prometheus exporter endpoint. Prometheus is enabled by default.
+  
+  ```bash
+  avail-node --no-prometheus
+  ```
+</ParamField>
+
+### Hardware benchmarks
+
+<ParamField path="no-hardware-benchmarks" type="boolean" default="false">
+  Disable automatic hardware benchmarks at startup.
+  
+  By default, benchmarks measure CPU speed, memory bandwidth, and disk speed. Results are logged and sent via telemetry.
+  
+  ```bash
+  avail-node --no-hardware-benchmarks
+  ```
+</ParamField>
+
+## Logging
+
+<ParamField path="log" type="string[]">
+  Set custom logging filter. Syntax: `<target>=<level>`.
+  
+  **Log levels:** `error`, `warn`, `info`, `debug`, `trace`
+  
+  Short form: `-l`
+  
+  ```bash
+  avail-node --log error,sync=debug,grandpa=warn
+  avail-node -l info
+  ```
+</ParamField>
+
+<ParamField path="detailed-log-output" type="boolean" default="false">
+  Enable detailed log output including log target, level, and thread name.
+  
+  Automatically enabled when logging at levels higher than `info`.
+  
+  ```bash
+  avail-node --detailed-log-output
+  ```
+</ParamField>
+
+<ParamField path="disable-log-color" type="boolean" default="false">
+  Disable log color output.
+  
+  ```bash
+  avail-node --disable-log-color
+  ```
+</ParamField>
+
+<ParamField path="enable-log-reloading" type="boolean" default="false">
+  Enable dynamic log filter updates and reloading.
+  
+  <Warning>
+  Can decrease performance by up to 6x depending on global logging level. Required for `system_addLogFilter` and `system_resetLogFilter` RPCs.
+  </Warning>
+  
+  ```bash
+  avail-node --enable-log-reloading
+  ```
+</ParamField>
+
+### Tracing
+
+<ParamField path="tracing-targets" type="string">
+  Set custom profiling filter. Same syntax as `--log`.
+  
+  ```bash
+  avail-node --tracing-targets pallet=trace
+  ```
+</ParamField>
+
+<ParamField path="tracing-receiver" type="string" default="log">
+  Receiver to process tracing messages.
+  
+  **Possible values:**
+  - `log` - Output tracing records using the log
+  
+  ```bash
+  avail-node --tracing-receiver log
+  ```
+</ParamField>
+
+## Keystore
+
+<ParamField path="keystore-path" type="string">
+  Specify custom keystore path.
+  
+  ```bash
+  avail-node --keystore-path /path/to/keystore
+  ```
+</ParamField>
+
+<ParamField path="password" type="string">
+  Password used by the keystore. Appends an extra user-defined secret to the seed.
+  
+  <Warning>
+  Providing passwords via command line is insecure. Use `--password-filename` or `--password-interactive` instead.
+  </Warning>
+  
+  ```bash
+  avail-node --password "my-password"
+  ```
+</ParamField>
+
+<ParamField path="password-filename" type="string">
+  File that contains the password used by the keystore.
+  
+  ```bash
+  avail-node --password-filename /secure/path/password.txt
+  ```
+</ParamField>
+
+<ParamField path="password-interactive" type="boolean" default="false">
+  Use interactive shell for entering the keystore password.
+  
+  ```bash
+  avail-node --password-interactive
+  ```
+</ParamField>
+
+## Development accounts
+
+These flags are shortcuts for development and testing. Each sets `--name <NAME> --validator` and adds the corresponding session keys to the keystore.
+
+<ParamField path="alice" type="boolean" default="false">
+  Shortcut for `--name Alice --validator` with Alice's session keys.
+  
+  ```bash
+  avail-node --alice
+  ```
+</ParamField>
+
+<ParamField path="bob" type="boolean" default="false">
+  Shortcut for `--name Bob --validator` with Bob's session keys.
+  
+  ```bash
+  avail-node --bob
+  ```
+</ParamField>
+
+<ParamField path="charlie" type="boolean" default="false">
+  Shortcut for `--name Charlie --validator` with Charlie's session keys.
+  
+  ```bash
+  avail-node --charlie
+  ```
+</ParamField>
+
+<ParamField path="dave" type="boolean" default="false">
+  Shortcut for `--name Dave --validator` with Dave's session keys.
+  
+  ```bash
+  avail-node --dave
+  ```
+</ParamField>
+
+<ParamField path="eve" type="boolean" default="false">
+  Shortcut for `--name Eve --validator` with Eve's session keys.
+  
+  ```bash
+  avail-node --eve
+  ```
+</ParamField>
+
+<ParamField path="ferdie" type="boolean" default="false">
+  Shortcut for `--name Ferdie --validator` with Ferdie's session keys.
+  
+  ```bash
+  avail-node --ferdie
+  ```
+</ParamField>
+
+<ParamField path="one" type="boolean" default="false">
+  Shortcut for `--name One --validator` with One's session keys.
+  
+  ```bash
+  avail-node --one
+  ```
+</ParamField>
+
+<ParamField path="two" type="boolean" default="false">
+  Shortcut for `--name Two --validator` with Two's session keys.
+  
+  ```bash
+  avail-node --two
+  ```
+</ParamField>
+
+## Avail-specific flags
+
+These flags are specific to Avail and control Data Availability features.
+
+### Kate RPC
+
+<ParamField path="enable-kate-rpc" type="boolean" default="false">
+  Enable Kate RPC endpoints for Data Availability queries.
+  
+  ```bash
+  avail-node --enable-kate-rpc
+  ```
+</ParamField>
+
+<ParamField path="enable-kate-rpc-metrics" type="boolean" default="false">
+  Enable Kate RPC metrics collection and reporting.
+  
+  ```bash
+  avail-node --enable-kate-rpc-metrics
+  ```
+</ParamField>
+
+<ParamField path="kate-max-cells-size" type="number" default="64">
+  Maximum number of cells that can be requested in one Kate RPC call.
+  
+  Must not exceed 10,000.
+  
+  ```bash
+  avail-node --kate-max-cells-size 128
+  ```
+</ParamField>
+
+### Data Availability sync
+
+<ParamField path="unsafe-da-sync" type="boolean" default="false">
+  Disable checking commitment on imported blocks during sync.
+  
+  <Danger>
+  This flag disables important Data Availability verification. Only use for testing or when you understand the security implications. Cannot be used with `--validator`.
+  </Danger>
+  
+  ```bash
+  avail-node --unsafe-da-sync
+  ```
+</ParamField>
+
+## Common flag combinations
+
+### Development node
+
+```bash
+avail-node --dev --tmp
+```
+
+### Production validator
+
+```bash
+avail-node \
+  --validator \
+  --name "my-validator" \
+  --chain mainnet \
+  --base-path /mnt/avail-data \
+  --state-pruning archive \
+  --rpc-port 9944 \
+  --prometheus-external \
+  --telemetry-url 'wss://telemetry.avail.so/submit 0'
+```
+
+### RPC node
+
+```bash
+avail-node \
+  --chain mainnet \
+  --base-path /mnt/avail-data \
+  --rpc-external \
+  --rpc-cors all \
+  --rpc-methods safe \
+  --rpc-max-connections 1000 \
+  --state-pruning 256
+```
+
+### Archive node
+
+```bash
+avail-node \
+  --chain mainnet \
+  --base-path /mnt/avail-data \
+  --state-pruning archive \
+  --blocks-pruning archive \
+  --db-cache 2048
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Commands reference" icon="terminal" href="/api/cli/commands">
+    Complete list of CLI commands
+  </Card>
+  <Card title="Running a node" icon="server" href="/operate/node/run">
+    Learn how to run an Avail node
+  </Card>
+</CardGroup>

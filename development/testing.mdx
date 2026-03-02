@@ -1,0 +1,430 @@
+---
+title: Running Tests
+description: Execute unit, integration, and end-to-end tests for the Avail node
+---
+
+This guide covers the testing infrastructure for the Avail blockchain node, including unit tests, integration tests, and end-to-end testing.
+
+## Quick Start
+
+Run all workspace tests:
+
+```bash
+cargo test --release --workspace
+```
+
+## Unit Tests
+
+Unit tests are located alongside the code they test throughout the workspace.
+
+### Running All Unit Tests
+
+<Steps>
+  <Step title="Run Tests">
+    ```bash
+    cargo test --release --workspace
+    ```
+    
+    The `--release` flag enables optimizations, which is recommended for tests involving cryptographic operations.
+  </Step>
+
+  <Step title="View Test Output">
+    For verbose output showing all test names:
+    ```bash
+    cargo test --release --workspace -- --nocapture
+    ```
+  </Step>
+</Steps>
+
+### Running Tests for Specific Packages
+
+Test a specific package:
+
+```bash
+# Test the runtime
+cargo test --release -p da-runtime
+
+# Test a specific pallet
+cargo test --release -p da-control
+cargo test --release -p pallet-mandate
+cargo test --release -p pallet-vector
+
+# Test the node
+cargo test --release -p avail-node
+```
+
+### Running Specific Tests
+
+Run tests matching a pattern:
+
+```bash
+cargo test --release test_name_pattern
+```
+
+Run a single test:
+
+```bash
+cargo test --release --package da-runtime --test specific_test_name
+```
+
+<Note>
+  Tests run in parallel by default. Use `-- --test-threads=1` to run tests sequentially if you encounter issues.
+</Note>
+
+## Integration Tests
+
+Integration tests verify interactions between components.
+
+### Running Integration Tests
+
+```bash
+cargo test --release --workspace --tests
+```
+
+## End-to-End Tests
+
+E2E tests verify the complete node functionality in a live environment.
+
+### Prerequisites
+
+<Steps>
+  <Step title="Build Node with Fast Runtime">
+    E2E tests require the node built with the `fast-runtime` feature:
+    ```bash
+    cargo build --release --features fast-runtime
+    ```
+    
+    This enables faster block times for efficient testing.
+  </Step>
+
+  <Step title="Start the Development Node">
+    In a terminal, start the node in development mode:
+    ```bash
+    ./target/release/avail-node --dev
+    ```
+    
+    Keep this running while executing E2E tests.
+  </Step>
+</Steps>
+
+### Running E2E Tests
+
+In a new terminal:
+
+```bash
+cd e2e
+cargo test -- --test-threads 1
+```
+
+<Warning>
+  E2E tests must run sequentially (`--test-threads 1`) to avoid conflicts between test scenarios.
+</Warning>
+
+### E2E Test Structure
+
+The `e2e/` directory contains:
+- Test scenarios for transaction submission
+- Data availability verification tests
+- RPC endpoint tests
+- Chain state validation
+
+## Benchmarks
+
+Avail includes several benchmark suites for performance testing.
+
+### Runtime Benchmarks
+
+Benchmark runtime operations using Criterion:
+
+```bash
+cargo bench --bench header_kate_commitment_cri
+```
+
+Benchmark using Divan:
+
+```bash
+cargo bench --bench header_kate_commitment_divan
+```
+
+### Instruction-Level Benchmarks
+
+Benchmark with IAI for CPU instruction counts:
+
+```bash
+cargo bench --bench header_kate_commitment_iai
+```
+
+Benchmark with IAI Callgrind:
+
+```bash
+cargo bench --bench header_kate_commitment_iai_callgrind
+```
+
+<Note>
+  Instruction-level benchmarks require `valgrind` to be installed:
+  ```bash
+  sudo apt-get install valgrind
+  ```
+</Note>
+
+### Kate RPC Benchmarks
+
+For Kate RPC benchmarking, you'll need Deno installed:
+
+<Steps>
+  <Step title="Start Development Node">
+    ```bash
+    ./avail-node --dev
+    ```
+  </Step>
+
+  <Step title="Run Benchmark Scripts">
+    ```bash
+    deno run -A ./examples/deno/benchmarks/query_proof.ts
+    deno run -A ./examples/deno/benchmarks/query_rows.ts
+    deno run -A ./examples/deno/benchmarks/query_block_length.ts
+    deno run -A ./examples/deno/benchmarks/query_data_proof.ts
+    ```
+  </Step>
+</Steps>
+
+## Code Quality Checks
+
+### Formatting
+
+Check code formatting:
+
+```bash
+cargo fmt --check
+```
+
+Fix formatting issues:
+
+```bash
+cargo fmt
+```
+
+Format E2E tests:
+
+```bash
+cargo fmt --manifest-path e2e/Cargo.toml
+```
+
+### Linting with Clippy
+
+Run Clippy linter:
+
+```bash
+cargo clippy
+```
+
+Run Clippy with all warnings as errors:
+
+```bash
+cargo clippy -- -D warnings
+```
+
+### Feature Validation
+
+Verify compilation with specific features:
+
+```bash
+export SKIP_WASM_BUILD=true
+cargo check --release --workspace --features "runtime-benchmarks try-runtime" -p avail-node
+```
+
+## Test Coverage
+
+Generate test coverage reports using instrumentation:
+
+```bash
+RUSTFLAGS="-C instrument-coverage" \
+LLVM_PROFILE_FILE="profile-%p-%m.profraw" \
+cargo test --release --workspace
+```
+
+Clean up coverage files:
+
+```bash
+find . -name \*.profraw -type f -exec rm -f {} +
+```
+
+<Note>
+  Coverage instrumentation may slow down test execution.
+</Note>
+
+## Continuous Integration
+
+The project uses GitHub Actions for automated testing.
+
+### CI Test Workflows
+
+<CodeGroup>
+```yaml Unit Tests
+# .github/workflows/unit_tests.yml
+# Runs on: push to main/develop, pull requests
+cargo test --release --workspace
+```
+
+```yaml E2E Tests
+# .github/workflows/e2e.yml
+# Runs containerized E2E tests with Podman
+ENGINE=podman ./scripts/workflows/e2e.sh
+```
+
+```yaml Lint and Build
+# .github/workflows/default.yml
+# Format checks, compilation, feature validation
+cargo fmt --check
+cargo build --release -p avail-node
+```
+</CodeGroup>
+
+## Docker-Based Testing
+
+Run tests in a containerized environment:
+
+### Build Test Container
+
+```bash
+docker build -t availnode -f ./dockerfiles/avail-node.Dockerfile .
+```
+
+### Run Tests in Container
+
+```bash
+docker run --rm availnode cargo test --release --workspace
+```
+
+## Common Test Scenarios
+
+### Testing a New Feature
+
+<Steps>
+  <Step title="Write Tests">
+    Add unit tests in the same module or in a `tests` submodule:
+    ```rust
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_new_feature() {
+            // Test implementation
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Run Tests">
+    ```bash
+    cargo test --release -p your-package test_new_feature
+    ```
+  </Step>
+
+  <Step title="Verify All Tests Pass">
+    ```bash
+    cargo test --release --workspace
+    ```
+  </Step>
+</Steps>
+
+### Testing a Bug Fix
+
+<Steps>
+  <Step title="Write Regression Test">
+    Create a test that reproduces the bug
+  </Step>
+
+  <Step title="Verify Test Fails">
+    Confirm the test fails before applying the fix
+  </Step>
+
+  <Step title="Apply Fix">
+    Implement the bug fix
+  </Step>
+
+  <Step title="Verify Test Passes">
+    Run the test to confirm the fix works
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Tests Timing Out
+
+Increase test timeout:
+
+```bash
+cargo test --release -- --test-timeout 300
+```
+
+### Flaky Tests
+
+Run tests multiple times to identify flakiness:
+
+```bash
+for i in {1..10}; do cargo test --release test_name || break; done
+```
+
+### Memory Issues
+
+Run tests with fewer parallel threads:
+
+```bash
+cargo test --release -- --test-threads=2
+```
+
+### E2E Test Failures
+
+Common issues:
+
+1. **Node not running**: Ensure the dev node is running with `--dev` flag
+2. **Wrong features**: Rebuild node with `--features fast-runtime`
+3. **Port conflicts**: Make sure ports 9944 and 30333 are available
+4. **Stale state**: Stop the node, remove the `/tmp/substrate*` directory, and restart
+
+### Debug Output
+
+Enable detailed logging:
+
+```bash
+RUST_LOG=debug cargo test --release test_name -- --nocapture
+```
+
+For Substrate-specific logs:
+
+```bash
+RUST_LOG=runtime=debug,sc_service=debug cargo test --release
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Use --release" icon="rocket">
+    Run tests with `--release` flag for realistic performance
+  </Card>
+  
+  <Card title="Test in Isolation" icon="vial">
+    Use `--test-threads=1` for tests that modify shared state
+  </Card>
+  
+  <Card title="Clean Builds" icon="broom">
+    Periodically clean build artifacts with `cargo clean`
+  </Card>
+  
+  <Card title="CI Parity" icon="check">
+    Run the same test commands locally as used in CI
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Contributing Guidelines" icon="code-pull-request" href="/development/contributing">
+    Learn how to contribute your tests and code
+  </Card>
+  <Card title="Building from Source" icon="hammer" href="/development/building">
+    Build the node for development and testing
+  </Card>
+</CardGroup>

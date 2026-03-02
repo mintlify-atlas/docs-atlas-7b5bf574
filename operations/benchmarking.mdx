@@ -1,0 +1,203 @@
+---
+title: Running Benchmarks
+description: Execute performance benchmarks for Avail node pallets and components
+---
+
+## Overview
+
+Avail provides comprehensive benchmarking capabilities for measuring pallet performance and Kate RPC operations. Benchmarks help determine runtime weights and identify performance bottlenecks.
+
+## Pallet Benchmarking
+
+### Prerequisites
+
+Build the node with runtime benchmarking features enabled:
+
+```bash
+cargo build --release --locked --features=runtime-benchmarks
+```
+
+### Running Pallet Benchmarks
+
+<Steps>
+  <Step title="Benchmark a specific pallet">
+    ```bash
+    ./target/release/avail-node benchmark pallet \
+      --chain=dev \
+      --steps=50 \
+      --repeat=20 \
+      --pallet="pallet_name" \
+      --extrinsic="*" \
+      --heap-pages=4096 \
+      --output ./output/pallet_name.rs
+    ```
+  </Step>
+
+  <Step title="Benchmark all pallets">
+    Use the automated benchmark script:
+    ```bash
+    cd ~/workspace/source
+    ./scripts/run_benchmarks.sh
+    ```
+  </Step>
+
+  <Step title="Review results">
+    Benchmark outputs are saved to the `./output` directory by default.
+  </Step>
+</Steps>
+
+### Benchmark Script Configuration
+
+The `run_benchmarks.sh` script supports environment variables for customization:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPS` | 50 | Number of steps for weight calculation |
+| `REPEAT` | 20 | Number of times to repeat each benchmark |
+| `TEMPLATE_PATH` | `./.maintain/frame-weight-template.hbs` | Weight template file |
+| `OUTPUT_PATH` | `./output` | Output directory for benchmark results |
+| `PALLETS` | `*` | Specific pallets to benchmark (or `*` for all) |
+| `OUR_PALLETS` | - | Set to benchmark only custom Avail pallets |
+
+**Example:**
+```bash
+export STEPS=100
+export REPEAT=50
+export PALLETS="da_control pallet_vector"
+./scripts/run_benchmarks.sh
+```
+
+### Excluded Pallets
+
+The following pallets are excluded from automatic benchmarking:
+- `pallet_election_provider_support_benchmarking` (helper pallet)
+- `pallet_babe` (no automatic benchmarking)
+- `pallet_grandpa` (no automatic benchmarking)
+- `pallet_mmr` (no automatic benchmarking)
+- `pallet_offences` (no automatic benchmarking)
+
+## Header Kate Commitment Benchmarks
+
+Avail includes specialized benchmarks for the Kate commitment header builder:
+
+### Time Measurement Benchmarks
+
+<Accordion title="Criterion benchmarks">
+  ```bash
+  cargo bench --bench header_kate_commitment_cri
+  ```
+  Uses the Criterion framework for detailed time measurements.
+</Accordion>
+
+<Accordion title="Divan benchmarks">
+  ```bash
+  cargo bench --bench header_kate_commitment_divan
+  ```
+  Uses the Divan framework for performance measurement.
+</Accordion>
+
+### Low-Level Performance Benchmarks
+
+<Accordion title="IAI Callgrind benchmarks">
+  ```bash
+  cargo bench --bench header_kate_commitment_iai_callgrind
+  ```
+  Measures instructions, cache hits/misses, and main memory accesses using Valgrind's Callgrind.
+</Accordion>
+
+<Accordion title="IAI benchmarks">
+  ```bash
+  cargo bench --bench header_kate_commitment_iai
+  ```
+  Alternative IAI benchmark for instruction counts and cache analysis.
+</Accordion>
+
+## Kate RPC Benchmarks
+
+### Running Kate RPC Benchmarks
+
+<Note>
+  These benchmarks require a running development node and Deno runtime.
+</Note>
+
+<Steps>
+  <Step title="Start development node">
+    ```bash
+    ./avail-node --dev
+    ```
+  </Step>
+
+  <Step title="Run RPC benchmarks">
+    ```bash
+    deno run -A ./examples/deno/benchmarks/query_proof.ts
+    deno run -A ./examples/deno/benchmarks/query_rows.ts
+    deno run -A ./examples/deno/benchmarks/query_block_length.ts
+    deno run -A ./examples/deno/benchmarks/query_data_proof.ts
+    ```
+  </Step>
+</Steps>
+
+### Available Kate RPC Metrics
+
+When Kate RPC metrics are enabled (`--enable-kate-rpc-metrics`), the following metrics are exposed:
+
+- `avail_kate_rpc_query_rows_execution_time` - Query rows execution time (μs)
+- `avail_kate_rpc_query_proof_execution_time` - Query proof execution time (μs)
+- `avail_kate_rpc_query_block_length_execution_time` - Query block length execution time (μs)
+- `avail_kate_rpc_query_data_proof_execution_time` - Query data proof execution time (μs)
+
+## Benchmark Subcommands
+
+The `avail-node benchmark` command supports multiple subcommands:
+
+```bash
+avail-node benchmark --help
+```
+
+### Common Options
+
+| Option | Description |
+|--------|-------------|
+| `--chain=<CHAIN>` | Chain specification (dev, turing, mainnet) |
+| `--steps=<N>` | Number of benchmark steps |
+| `--repeat=<N>` | Number of repetitions |
+| `--pallet=<NAME>` | Pallet to benchmark |
+| `--extrinsic=<NAME>` | Specific extrinsic or `*` for all |
+| `--heap-pages=<N>` | Heap pages for runtime execution |
+| `--output=<PATH>` | Output file path |
+| `--template=<PATH>` | Weight template file |
+| `--header=<PATH>` | License header file |
+
+## Troubleshooting
+
+<Warning>
+  If benchmarks fail, check the error log at `./output/benchmarking_errors.txt`.
+</Warning>
+
+### Common Issues
+
+**Build failures:**
+```bash
+# Ensure runtime-benchmarks feature is enabled
+cargo build --release --locked --features=runtime-benchmarks
+```
+
+**Out of memory errors:**
+```bash
+# Reduce the number of heap pages or steps
+--heap-pages=2048 --steps=25
+```
+
+**Pallet not found:**
+```bash
+# List all available pallets
+./target/release/avail-node benchmark pallet --list --chain=dev
+```
+
+## Best Practices
+
+1. **Consistent environment** - Run benchmarks on the same hardware for comparable results
+2. **Minimal load** - Close other applications to avoid interference
+3. **Multiple runs** - Use `--repeat=20` or higher for statistical significance
+4. **Sufficient steps** - Use `--steps=50` minimum for accurate weight curves
+5. **Documentation** - Record hardware specs and benchmark parameters for reproducibility

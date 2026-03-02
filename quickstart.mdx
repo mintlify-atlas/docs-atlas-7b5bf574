@@ -1,80 +1,288 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get an Avail node running in minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide will help you quickly set up and run an Avail node using Docker or from pre-built binaries. Choose the method that best fits your environment.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+Before you begin, ensure you have one of the following:
 
-### Step 2: Deploy your changes
+- Docker or Podman installed
+- OR sufficient disk space (minimum 20GB recommended) for building from source
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Option 1: Run with Docker (recommended)
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+The fastest way to get started is using Docker:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Build the Docker image">
+    Clone the repository and build the Avail Node Docker image:
 
-### Step 3: Go live
+    ```bash
+    git clone https://github.com/availproject/avail.git
+    cd avail
+    docker build -t availnode -f ./dockerfiles/avail-node.Dockerfile .
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    This process will take several minutes as it compiles the node from source.
+  </Step>
+
+  <Step title="Create a data directory">
+    Create a directory to persist blockchain data:
+
+    ```bash
+    mkdir output
+    ```
+  </Step>
+
+  <Step title="Run the node">
+    Start the Avail Node connected to the Turing testnet:
+
+    <CodeGroup>
+      ```bash Standard
+      docker run --rm -p 30333:30333 -p 9944:9944 -v ./output:/output availnode
+      ```
+
+      ```bash SELinux
+      docker run --rm -p 30333:30333 -p 9944:9944 -v ./output:/output:z availnode
+      ```
+
+      ```bash Development mode
+      docker run --rm -p 30333:30333 -p 9944:9944 -v ./output:/output availnode --dev --rpc-methods=unsafe --unsafe-rpc-external --rpc-cors=all
+      ```
+    </CodeGroup>
+
+    <Note>
+      The SELinux variant is required on Fedora, RHEL, and other SELinux-enabled systems.
+    </Note>
+  </Step>
+</Steps>
+
+## Option 2: Run from pre-built binary
+
+Avail provides GPG-signed release binaries for Linux systems.
+
+<Steps>
+  <Step title="Download the binary">
+    Download the latest release from [GitHub Releases](https://github.com/availproject/avail/releases):
+
+    ```bash
+    # Replace X.Y.Z with the desired version
+    VERSION="vX.Y.Z"
+    wget https://github.com/availproject/avail/releases/download/$VERSION/avail-node-linux-amd64.tar.gz
+    wget https://github.com/availproject/avail/releases/download/$VERSION/avail-node-linux-amd64.tar.gz.sig
+    wget https://github.com/availproject/avail/releases/download/$VERSION/gpg-public-key.asc
+    ```
+  </Step>
+
+  <Step title="Verify the signature">
+    Import the GPG key and verify the binary signature:
+
+    ```bash
+    # Import the public key
+    gpg --import gpg-public-key.asc
+
+    # Verify the signature
+    gpg --verify avail-node-linux-amd64.tar.gz.sig avail-node-linux-amd64.tar.gz
+    ```
+
+    You should see a message indicating a "Good signature" from the Avail Project release key.
+  </Step>
+
+  <Step title="Extract and run">
+    Extract the binary and start the node:
+
+    ```bash
+    tar -xzf avail-node-linux-amd64.tar.gz
+    chmod +x avail-node
+    mkdir -p output
+    ./avail-node --chain mainnet -d ./output
+    ```
+  </Step>
+</Steps>
+
+## Option 3: Build from source
+
+For the latest features or custom builds:
+
+<Steps>
+  <Step title="Install dependencies">
+    Install Rust and Substrate dependencies:
+
+    ```bash
+    # Install Rust
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+
+    # Install system dependencies (Ubuntu/Debian)
+    sudo apt update
+    sudo apt install -y build-essential git clang curl libssl-dev llvm libudev-dev make cmake protobuf-compiler
+    ```
+
+    See the [installation guide](/installation) for other operating systems.
+  </Step>
+
+  <Step title="Clone and build">
+    Clone the repository and build the release binary:
+
+    ```bash
+    git clone https://github.com/availproject/avail.git
+    cd avail
+    mkdir -p output
+    cargo run --locked --release -- --chain mainnet -d ./output
+    ```
+
+    <Note>
+      The first build will take 20-30 minutes depending on your hardware.
+    </Note>
+  </Step>
+</Steps>
+
+## Verify your node is running
+
+Once started, you should see output similar to:
+
+```
+2025-03-05 11:39:57 Avail Node    
+2025-03-05 11:39:57 ✌️  version 2.3.0-6c6b8912fd3    
+2025-03-05 11:39:57 ❤️  by Avail Project <info@availproject.org>, 2017-2025    
+2025-03-05 11:39:57 📋 Chain specification: Avail Development Network    
+2025-03-05 11:39:57 🏷  Node name: spotty-ducks-6306    
+2025-03-05 11:39:57 👤 Role: AUTHORITY    
+2025-03-05 11:39:59 🏷  Local node identity is: 12D3KooWDCNjiaVbFL4BGYkbkxHwqJjhDNAxvBuxNdCAB4HDuYjA    
+2025-03-05 11:39:59 〽️ Prometheus exporter started at 127.0.0.1:9615    
+2025-03-05 11:39:59 Running JSON-RPC server: addr=127.0.0.1:9944, allowed origins=["*"]    
+```
+
+## Check node health
+
+You can verify your node is healthy using these methods:
+
+<CodeGroup>
+  ```bash RPC endpoint
+  curl -H "Content-Type: application/json" \
+    -d '{"id":1, "jsonrpc":"2.0", "method": "system_health"}' \
+    http://localhost:9944
+  ```
+
+  ```bash Prometheus metrics
+  curl http://localhost:9615/metrics | grep avail_
+  ```
+</CodeGroup>
+
+## Network selection
+
+Connect to different Avail networks by changing the `--chain` flag:
+
+<CodeGroup>
+  ```bash Mainnet
+  ./avail-node --chain mainnet -d ./output
+  ```
+
+  ```bash Testnet (Turing)
+  ./avail-node --chain turing -d ./output
+  ```
+
+  ```bash Development
+  ./avail-node --dev
+  ```
+</CodeGroup>
+
+## Enable Kate RPC
+
+To enable Kate RPC for data availability queries, add the `--enable-kate-rpc` flag:
+
+```bash
+./avail-node --chain mainnet --enable-kate-rpc -d ./output
+```
+
+<Note>
+  The `--dev` flag automatically enables Kate RPC.
+</Note>
+
+## Common configuration options
+
+Customize your node with these frequently used flags:
+
+| Flag | Description | Example |
+|------|-------------|----------|
+| `--name` | Human-readable node name | `--name "MyAvailNode"` |
+| `--rpc-port` | JSON-RPC server port | `--rpc-port 9944` |
+| `--port` | P2P networking port | `--port 30333` |
+| `--prometheus-port` | Prometheus metrics port | `--prometheus-port 9615` |
+| `--validator` | Enable validator mode | `--validator` |
+| `--rpc-cors` | Set CORS for RPC | `--rpc-cors=all` |
+
+<Warning>
+  Never use `--unsafe-rpc-external` or `--rpc-methods=unsafe` on a public node. These options expose dangerous RPC methods that can compromise your node.
+</Warning>
+
+## Resource requirements
+
+Ensure your system meets these minimum requirements:
+
+- **CPU**: 4+ cores recommended
+- **RAM**: 8GB minimum, 16GB recommended
+- **Disk**: 200GB+ SSD (grows over time)
+- **Network**: Stable broadband connection
+
+The node displays hardware benchmarks on startup:
+
+```
+2025-03-05 11:39:59 🏁 CPU score: 1.36 GiBs    
+2025-03-05 11:39:59 🏁 Memory score: 22.37 GiBs    
+2025-03-05 11:39:59 🏁 Disk score (seq. writes): 6.14 GiBs    
+2025-03-05 11:39:59 🏁 Disk score (rand. writes): 2.85 GiBs
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation guide" icon="download" href="/installation">
+    Learn about detailed installation for different platforms
+  </Card>
+  <Card title="Configuration" icon="gear">
+    Explore advanced node configuration options
+  </Card>
+  <Card title="Validator setup" icon="shield">
+    Run your node as a validator
+  </Card>
+  <Card title="Monitoring" icon="chart-line">
+    Set up Prometheus and Grafana monitoring
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+### Node won't start
+
+Check that ports 9944 and 30333 are not already in use:
+
+```bash
+sudo lsof -i :9944
+sudo lsof -i :30333
+```
+
+### Slow synchronization
+
+Increase peer connections or add bootnodes:
+
+```bash
+./avail-node --chain mainnet --out-peers 25 --in-peers 50
+```
+
+### Database corruption
+
+If you encounter database errors, try purging the chain data:
+
+```bash
+./avail-node purge-chain --chain mainnet -d ./output
+```
+
+<Warning>
+  Purging the chain will delete all local blockchain data and require a full resync.
+</Warning>

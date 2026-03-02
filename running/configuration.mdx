@@ -1,0 +1,791 @@
+---
+title: Node Configuration
+description: Complete reference for Avail node command-line flags and configuration options
+---
+
+Configure your Avail node with command-line flags to customize behavior, networking, RPC access, storage, and more. This guide covers all available configuration options.
+
+## Basic Usage
+
+```bash
+avail-node [FLAGS] [OPTIONS] --chain <CHAIN>
+```
+
+## Network Selection
+
+### Chain Specification
+
+Select which network to connect to:
+
+```bash
+--chain <CHAIN_SPEC>
+```
+
+<Tabs>
+  <Tab title="Mainnet">
+    ```bash
+    avail-node --chain mainnet
+    ```
+  </Tab>
+  
+  <Tab title="Turing Testnet">
+    ```bash
+    avail-node --chain turing
+    ```
+  </Tab>
+  
+  <Tab title="Development">
+    ```bash
+    avail-node --dev
+    # Equivalent to: --chain dev --tmp --validator
+    ```
+  </Tab>
+  
+  <Tab title="Custom Spec">
+    ```bash
+    avail-node --chain /path/to/chain-spec.json
+    ```
+  </Tab>
+</Tabs>
+
+### Development Mode
+
+```bash
+--dev
+```
+
+Development mode is a shorthand that enables:
+- Development chain specification
+- Temporary database (`--tmp`)
+- Validator role (`--validator`)
+- Kate RPC automatically enabled
+- Single-node authority (Alice)
+
+<Warning>
+Never use `--dev` on production or public networks.
+</Warning>
+
+## Storage Configuration
+
+### Data Directory
+
+Specify where blockchain data is stored:
+
+```bash
+-d, --base-path <PATH>
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet -d /var/lib/avail
+```
+
+### Temporary Storage
+
+```bash
+--tmp
+```
+
+Use temporary directory for database. Data is deleted when the node stops.
+
+```bash
+avail-node --chain dev --tmp
+```
+
+### Database Backend
+
+```bash
+--database <DB_TYPE>
+```
+
+Options:
+- `paritydb` (default, recommended)
+- `rocksdb`
+
+Example:
+
+```bash
+avail-node --chain mainnet --database paritydb -d ./output
+```
+
+### Pruning
+
+Control how much historical state to keep:
+
+```bash
+--pruning <MODE>
+```
+
+Options:
+- `archive` - Keep all blocks and states (required for archive nodes)
+- `<number>` - Keep last N blocks (e.g., `256`, `1000`)
+
+Example:
+
+```bash
+# Archive node (full history)
+avail-node --chain mainnet --pruning archive -d ./output
+
+# Keep last 1000 blocks
+avail-node --chain mainnet --pruning 1000 -d ./output
+```
+
+<Note>
+Archive nodes require significantly more disk space but can serve historical queries.
+</Note>
+
+## Node Identity
+
+### Node Name
+
+Set a human-readable name for your node:
+
+```bash
+--name <NAME>
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --name "MyAvailNode" -d ./output
+```
+
+The name appears in:
+- Telemetry dashboards
+- Peer listings
+- Logs and metrics
+
+If not specified, a random name is generated (e.g., `spotty-ducks-6306`).
+
+### Custom Network Name
+
+Customize the network name for development chains:
+
+```bash
+--network-name <NAME>
+```
+
+Example:
+
+```bash
+avail-node --dev --network-name "My Test Network"
+```
+
+This sets the chain name and generates a lowercase ID with underscores.
+
+## Node Roles
+
+### Validator
+
+Run as a validator (authority node):
+
+```bash
+--validator
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --validator -d ./output
+```
+
+<Note>
+Validators require proper key management and sufficient stake. See validator documentation for complete setup.
+</Note>
+
+### Light Client
+
+Run in light client mode:
+
+```bash
+--light
+```
+
+## Networking
+
+### P2P Port
+
+Set the peer-to-peer networking port:
+
+```bash
+--port <PORT>
+```
+
+Default: `30333`
+
+Example:
+
+```bash
+avail-node --chain mainnet --port 30334 -d ./output
+```
+
+### Public Address
+
+Advertise a public address for P2P:
+
+```bash
+--public-addr <ADDRESS>
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --public-addr /ip4/203.0.113.42/tcp/30333
+```
+
+### Listen Addresses
+
+Specify network interfaces to listen on:
+
+```bash
+--listen-addr <ADDRESS>
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --listen-addr /ip4/0.0.0.0/tcp/30333
+```
+
+### Boot Nodes
+
+Connect to specific boot nodes:
+
+```bash
+--bootnodes <ADDR>...
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --bootnodes /ip4/1.2.3.4/tcp/30333/p2p/12D3KooW...
+```
+
+### Reserved Nodes
+
+Connect only to specific peers:
+
+```bash
+--reserved-nodes <ADDR>...
+--reserved-only
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet \
+  --reserved-nodes /ip4/1.2.3.4/tcp/30333/p2p/12D3KooW... \
+  --reserved-only
+```
+
+### Maximum Peers
+
+```bash
+--in-peers <COUNT>     # Maximum incoming connections (default: 25)
+--out-peers <COUNT>    # Maximum outgoing connections (default: 25)
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --in-peers 50 --out-peers 50
+```
+
+## RPC Configuration
+
+### RPC Port
+
+Set the RPC server port:
+
+```bash
+--rpc-port <PORT>
+```
+
+Default: `9944`
+
+Example:
+
+```bash
+avail-node --chain mainnet --rpc-port 9945 -d ./output
+```
+
+### RPC Methods
+
+Control which RPC methods are exposed:
+
+```bash
+--rpc-methods <METHOD>
+```
+
+Options:
+- `safe` (default) - Only safe RPC methods
+- `unsafe` - All RPC methods including state-changing operations
+
+Example:
+
+```bash
+# Development only!
+avail-node --dev --rpc-methods=unsafe
+```
+
+<Warning>
+`--rpc-methods=unsafe` exposes dangerous methods like `author_submitExtrinsic` and should NEVER be used on public nodes.
+</Warning>
+
+### External RPC Access
+
+Allow RPC connections from external hosts:
+
+```bash
+--rpc-external
+--unsafe-rpc-external  # Explicitly allow potentially unsafe external access
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --rpc-external --rpc-cors=all
+```
+
+<Warning>
+External RPC access can expose your node to attacks. Use with proper firewall rules and authentication.
+</Warning>
+
+### RPC CORS
+
+Configure Cross-Origin Resource Sharing:
+
+```bash
+--rpc-cors <ORIGINS>
+```
+
+Options:
+- `all` - Allow all origins (development only)
+- Comma-separated list of allowed origins
+
+Example:
+
+```bash
+# Allow all (dev only)
+avail-node --dev --rpc-cors=all
+
+# Specific origins
+avail-node --chain mainnet --rpc-cors="https://app.example.com,https://dashboard.example.com"
+```
+
+### RPC Max Connections
+
+```bash
+--rpc-max-connections <COUNT>
+```
+
+Default: `100`
+
+Example:
+
+```bash
+avail-node --chain mainnet --rpc-max-connections 200
+```
+
+## Kate RPC (Data Availability)
+
+Avail-specific RPC methods for data availability operations.
+
+### Enable Kate RPC
+
+```bash
+--enable-kate-rpc
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --enable-kate-rpc -d ./output
+```
+
+<Note>
+Kate RPC is automatically enabled when using `--dev` mode.
+</Note>
+
+### Kate RPC Metrics
+
+Enable metrics collection for Kate RPC:
+
+```bash
+--enable-kate-rpc-metrics
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet \
+  --enable-kate-rpc \
+  --enable-kate-rpc-metrics \
+  -d ./output
+```
+
+### Kate Max Cells Size
+
+Maximum number of cells that can be requested in one call:
+
+```bash
+--kate-max-cells-size <SIZE>
+```
+
+Default: `64`  
+Maximum: `10000`
+
+Example:
+
+```bash
+avail-node --chain mainnet \
+  --enable-kate-rpc \
+  --kate-max-cells-size 128 \
+  -d ./output
+```
+
+## Prometheus Metrics
+
+### Enable Prometheus
+
+Prometheus metrics are enabled by default on `127.0.0.1:9615`.
+
+```bash
+--prometheus-port <PORT>       # Default: 9615
+--prometheus-external          # Listen on all interfaces
+--no-prometheus                # Disable Prometheus
+```
+
+Example:
+
+```bash
+# Custom port
+avail-node --chain mainnet --prometheus-port 9616
+
+# External access
+avail-node --chain mainnet --prometheus-external
+
+# Disable metrics
+avail-node --chain mainnet --no-prometheus
+```
+
+### Metrics Endpoint
+
+Metrics are available at:
+```
+http://localhost:9615/metrics
+```
+
+## Telemetry
+
+### Telemetry URL
+
+Report telemetry to a server:
+
+```bash
+--telemetry-url '<URL> <VERBOSITY>'
+```
+
+Verbosity levels: `0` (basic) to `9` (verbose)
+
+Example:
+
+```bash
+avail-node --chain mainnet \
+  --telemetry-url 'ws://telemetry.avail.tools:8001/submit 0'
+```
+
+### Disable Telemetry
+
+```bash
+--no-telemetry
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --no-telemetry -d ./output
+```
+
+## Synchronization
+
+### Unsafe DA Sync
+
+Disable data availability commitment verification during sync:
+
+```bash
+--unsafe-da-sync
+```
+
+<Warning>
+This flag disables important security checks and should only be used for testing or when explicitly required. Cannot be used with `--validator`.
+</Warning>
+
+Example:
+
+```bash
+avail-node --chain mainnet --unsafe-da-sync -d ./output
+```
+
+### Sync Mode
+
+```bash
+--sync <MODE>
+```
+
+Options:
+- `full` - Download and verify all blocks
+- `fast` - Download blocks and verify only recent state
+- `warp` - Warp sync to recent state
+
+Example:
+
+```bash
+avail-node --chain mainnet --sync warp -d ./output
+```
+
+## GRANDPA Configuration
+
+### Justification Period
+
+Interval for importing/generating GRANDPA justifications:
+
+```bash
+--grandpa-justification-period <BLOCKS>
+```
+
+Default: `512`  
+Minimum: `1`
+
+Example:
+
+```bash
+avail-node --chain mainnet --grandpa-justification-period 1024 -d ./output
+```
+
+## Hardware Benchmarks
+
+### Disable Benchmarks
+
+Skip automatic hardware benchmarking at startup:
+
+```bash
+--no-hardware-benchmarks
+```
+
+Example:
+
+```bash
+avail-node --chain mainnet --no-hardware-benchmarks -d ./output
+```
+
+<Note>
+Hardware benchmarks measure CPU, memory, and disk performance. They're displayed in logs and sent to telemetry. Disabling them saves a few seconds at startup.
+</Note>
+
+## Logging
+
+### Log Level
+
+Control logging verbosity:
+
+```bash
+-l, --log <TARGETS>
+```
+
+Format: `<target>=<level>` where level is:
+- `error`
+- `warn`
+- `info` (default)
+- `debug`
+- `trace`
+
+Examples:
+
+```bash
+# Basic log level
+avail-node --chain mainnet -l debug
+
+# Multiple targets
+avail-node --chain mainnet -l info,runtime=debug,babe=trace
+
+# Specific module
+avail-node --chain mainnet -l avail::node::service=debug
+```
+
+### Log Output
+
+Logs are written to stderr by default. Redirect as needed:
+
+```bash
+# To file
+avail-node --chain mainnet -d ./output 2>&1 | tee node.log
+
+# JSON format (for structured logging)
+avail-node --chain mainnet --log-pattern json
+```
+
+## Storage Monitoring
+
+```bash
+--storage-monitor <THRESHOLD>
+```
+
+Monitor storage usage and warn when threshold is reached:
+
+Example:
+
+```bash
+avail-node --chain mainnet --storage-monitor 90 -d ./output
+```
+
+## Complete Example Configurations
+
+### Production Mainnet Validator
+
+```bash
+avail-node \
+  --chain mainnet \
+  --validator \
+  --name "MyValidator" \
+  -d /var/lib/avail \
+  --port 30333 \
+  --rpc-port 9944 \
+  --prometheus-port 9615 \
+  --pruning archive \
+  --in-peers 50 \
+  --out-peers 50 \
+  --grandpa-justification-period 512 \
+  --telemetry-url 'ws://telemetry.avail.tools:8001/submit 0' \
+  -l info
+```
+
+### Development Node with Kate RPC
+
+```bash
+avail-node \
+  --dev \
+  --name "DevNode" \
+  -d ./dev-data \
+  --enable-kate-rpc \
+  --enable-kate-rpc-metrics \
+  --kate-max-cells-size 128 \
+  --rpc-methods=unsafe \
+  --unsafe-rpc-external \
+  --rpc-cors=all \
+  --prometheus-external \
+  -l debug,runtime=trace
+```
+
+### Archive Node (RPC Provider)
+
+```bash
+avail-node \
+  --chain mainnet \
+  --name "ArchiveRPC" \
+  -d /mnt/archive/avail \
+  --pruning archive \
+  --rpc-external \
+  --rpc-cors="https://app.example.com" \
+  --rpc-methods safe \
+  --rpc-max-connections 500 \
+  --enable-kate-rpc \
+  --prometheus-external \
+  --in-peers 100 \
+  --out-peers 100 \
+  -l info
+```
+
+### Turing Testnet Full Node
+
+```bash
+avail-node \
+  --chain turing \
+  --name "TuringNode" \
+  -d ./turing-data \
+  --enable-kate-rpc \
+  --prometheus-port 9615 \
+  --no-telemetry \
+  -l info
+```
+
+## Configuration File
+
+<Note>
+Avail node doesn't support configuration files directly. Use shell scripts or systemd environment files to manage complex configurations.
+</Note>
+
+### Using Environment Script
+
+Create `config.sh`:
+
+```bash
+#!/bin/bash
+
+export CHAIN="mainnet"
+export DATA_DIR="/var/lib/avail"
+export NODE_NAME="MyNode"
+export RPC_PORT="9944"
+export P2P_PORT="30333"
+
+avail-node \
+  --chain $CHAIN \
+  -d $DATA_DIR \
+  --name "$NODE_NAME" \
+  --port $P2P_PORT \
+  --rpc-port $RPC_PORT \
+  --validator
+```
+
+Run:
+
+```bash
+chmod +x config.sh
+./config.sh
+```
+
+### Using systemd Environment
+
+Create `/etc/default/avail-node`:
+
+```bash
+CHAIN=mainnet
+DATA_DIR=/var/lib/avail
+NODE_NAME=MyValidator
+```
+
+Systemd service:
+
+```ini
+[Unit]
+Description=Avail Node
+
+[Service]
+EnvironmentFile=/etc/default/avail-node
+ExecStart=/usr/local/bin/avail-node --chain ${CHAIN} -d ${DATA_DIR} --name ${NODE_NAME} --validator
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Flag Reference Summary
+
+| Category | Flags |
+|----------|-------|
+| **Network** | `--chain`, `--dev`, `--network-name` |
+| **Storage** | `-d/--base-path`, `--tmp`, `--database`, `--pruning` |
+| **Identity** | `--name`, `--validator` |
+| **Networking** | `--port`, `--public-addr`, `--bootnodes`, `--in-peers`, `--out-peers` |
+| **RPC** | `--rpc-port`, `--rpc-methods`, `--rpc-external`, `--rpc-cors` |
+| **Kate RPC** | `--enable-kate-rpc`, `--kate-max-cells-size`, `--enable-kate-rpc-metrics` |
+| **Metrics** | `--prometheus-port`, `--prometheus-external`, `--no-prometheus` |
+| **Telemetry** | `--telemetry-url`, `--no-telemetry` |
+| **Sync** | `--sync`, `--unsafe-da-sync`, `--grandpa-justification-period` |
+| **Other** | `--no-hardware-benchmarks`, `-l/--log`, `--storage-monitor` |
+
+## Next Steps
+
+- Learn about [Network Configurations](/running/networks) for different networks
+- Set up nodes with [Manual Setup](/running/manual-setup) or [Docker](/running/docker-setup)
+- Monitor your node with Prometheus and Grafana

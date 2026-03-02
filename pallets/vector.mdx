@@ -1,0 +1,812 @@
+---
+title: 'Vector Pallet'
+description: 'Cross-chain messaging bridge with zero-knowledge proof verification'
+---
+
+The Vector pallet implements a trustless bridge between Ethereum and Avail using zero-knowledge proofs to verify Ethereum beacon chain consensus.
+
+## Overview
+
+Vector enables:
+- Ethereum light client functionality on Avail
+- Cross-chain message execution with cryptographic proofs
+- Fungible token transfers between chains
+- Arbitrary message passing for smart contract calls
+
+## Architecture
+
+The pallet uses two verification mechanisms:
+
+1. **Groth16 Proofs** - For step/rotate function verification (Circom-based)
+2. **SP1 Proofs** - For unified proof verification with sync committee tracking
+
+### Proof Types
+
+**Step Function**: Advances the light client head by verifying beacon chain finality.
+
+**Rotate Function**: Updates sync committee when transitioning to a new period.
+
+## Storage Items
+
+### Head
+
+```rust
+pub type Head<T: Config> = StorageValue<_, u64, ValueQuery>;
+```
+
+The latest verified slot number from the Ethereum beacon chain.
+
+### Headers
+
+```rust
+pub type Headers<T> = StorageMap<_, Identity, u64, H256, ValueQuery>;
+```
+
+Maps slot numbers to beacon chain header roots.
+
+### ExecutionStateRoots
+
+```rust
+pub type ExecutionStateRoots<T> = StorageMap<_, Identity, u64, H256, ValueQuery>;
+```
+
+Maps slot numbers to Ethereum execution layer state roots for storage proof verification.
+
+### SyncCommitteePoseidons
+
+```rust
+pub type SyncCommitteePoseidons<T> = StorageMap<_, Identity, u64, U256, ValueQuery>;
+```
+
+Poseidon commitments for sync committees, indexed by period.
+
+### SyncCommitteeHashes
+
+```rust
+pub type SyncCommitteeHashes<T> = StorageMap<_, Identity, u64, H256, ValueQuery>;
+```
+
+Keccak hashes of sync committees for SP1 verification, indexed by period.
+
+### MessageStatus
+
+```rust
+pub type MessageStatus<T> = StorageMap<_, Identity, H256, MessageStatusEnum, ValueQuery>;
+```
+
+Tracks execution status of cross-chain messages:
+
+```rust
+pub enum MessageStatusEnum {
+    NotExecuted,
+    ExecutionSucceeded,
+    ExecutionFailed,
+}
+```
+
+### Broadcasters
+
+```rust
+pub type Broadcasters<T> = StorageMap<_, Identity, u32, H256, ValueQuery>;
+```
+
+Maps source chain IDs to their broadcaster contract addresses.
+
+### WhitelistedDomains
+
+```rust
+pub type WhitelistedDomains<T> = StorageValue<_, BoundedVec<u32, ConstU32<10_000>>, ValueQuery>;
+```
+
+List of permitted source chain domains.
+
+### FunctionIds
+
+```rust
+pub type FunctionIds<T: Config> = StorageValue<_, Option<(H256, H256)>, ValueQuery>;
+```
+
+Stores `(step_function_id, rotate_function_id)` for proof verification routing.
+
+### Updater
+
+```rust
+pub type Updater<T: Config> = StorageValue<_, H256, ValueQuery>;
+```
+
+The authorized account that can submit proof updates.
+
+## Type Definitions
+
+```rust
+// Bounded input types
+pub type ProofInput = BoundedVec<u8, ConstU32<1024>>;
+pub type PublicValuesInput = BoundedVec<u8, ConstU32<512>>;
+pub type FunctionInput = BoundedVec<u8, ConstU32<256>>;
+pub type FunctionOutput = BoundedVec<u8, ConstU32<512>>;
+pub type FunctionProof = BoundedVec<u8, ConstU32<1048>>;
+pub type ValidProof = BoundedVec<BoundedVec<u8, ConstU32<2048>>, ConstU32<32>>;
+
+// Supported asset (Avail native token)
+pub const SUPPORTED_ASSET_ID: H256 = H256::zero();
+
+// Configuration structure
+#[derive(Clone, Copy, Encode, Decode, Debug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+pub struct Configuration {
+    pub slots_per_period: u64,      // Slots per sync committee period
+    pub finality_threshold: u16,     // Minimum participation for finality
+}
+
+// Verified step output
+#[derive(Clone, Copy, Encode, Decode, Debug, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
+pub struct VerifiedStepOutput {
+    pub finalized_header_root: H256,
+    pub execution_state_root: H256,
+    pub finalized_slot: u64,
+    pub participation: u16,
+}
+```
+
+## Extrinsics
+
+### fulfill_call
+
+Verifies and processes step or rotate proofs using Groth16 verification.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be signed by the authorized updater account
+</ParamField>
+
+<ParamField path="function_id" type="H256" required>
+  Function identifier (step or rotate)
+</ParamField>
+
+<ParamField path="input" type="FunctionInput" required>
+  Function input data
+</ParamField>
+
+<ParamField path="output" type="FunctionOutput" required>
+  Function output data
+</ParamField>
+
+<ParamField path="proof" type="FunctionProof" required>
+  Groth16 proof bytes
+</ParamField>
+
+<ParamField path="slot" type="u64" required>
+  Slot number to update
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+let call = Call::fulfill_call {
+    function_id: step_function_id,
+    input,
+    output,
+    proof,
+    slot: 12345,
+};
+call.dispatch(updater_origin)?;
+```
+
+```typescript TypeScript
+await api.tx.vector
+  .fulfillCall(functionId, input, output, proof, slot)
+  .signAndSend(updaterAccount);
+```
+</CodeGroup>
+
+**Step Function Processing:**
+
+```rust
+// Parse step output (74 bytes)
+let step_output = parse_step_output(output)?;
+// VerifiedStepOutput {
+//     finalized_header_root: H256,    // bytes 0-31
+//     execution_state_root: H256,     // bytes 32-63
+//     finalized_slot: u64,            // bytes 64-71
+//     participation: u16,             // bytes 72-73
+// }
+
+// Validate participation threshold
+ensure!(
+    step_output.participation >= config.finality_threshold,
+    Error::<T>::NotEnoughParticipants
+);
+
+// Update head if slot is newer
+ensure!(step_output.finalized_slot > Head::<T>::get(), Error::<T>::SlotBehindHead);
+```
+
+**Rotate Function Processing:**
+
+```rust
+// Parse rotate output (32 bytes)
+let sync_committee_poseidon = parse_rotate_output(output)?; // U256
+
+// Calculate next period
+let period = slot / config.slots_per_period;
+let next_period = period + 1;
+
+// Store new sync committee commitment
+SyncCommitteePoseidons::<T>::insert(next_period, sync_committee_poseidon);
+```
+
+**Events:**
+- `HeadUpdated { slot, finalization_root, execution_state_root }` - Step success
+- `SyncCommitteeUpdated { period, root }` - Rotate success
+
+**Errors:**
+- `UpdaterMisMatch` - Caller is not the authorized updater
+- `VerificationError` - Proof verification failed
+- `VerificationFailed` - Proof is invalid
+- `FunctionIdNotKnown` - Invalid function ID
+- `SlotBehindHead` - Slot is not ahead of current head
+- `NotEnoughParticipants` - Participation below threshold
+
+---
+
+### fulfill
+
+Verifies and processes unified SP1 proofs for light client updates.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be signed by the authorized updater account
+</ParamField>
+
+<ParamField path="proof" type="ProofInput" required>
+  SP1 Groth16 proof bytes (max 1024 bytes)
+</ParamField>
+
+<ParamField path="public_values" type="PublicValuesInput" required>
+  ABI-encoded public values (max 512 bytes)
+</ParamField>
+
+**Public Values Structure:**
+
+```solidity
+struct ProofOutputs {
+    bytes32 executionStateRoot;      // Ethereum execution state root
+    bytes32 newHeader;               // New beacon header root
+    bytes32 nextSyncCommitteeHash;   // Next sync committee hash (if available)
+    uint256 newHead;                 // New slot number
+    bytes32 prevHeader;              // Previous header root
+    uint256 prevHead;                // Previous slot number
+    bytes32 syncCommitteeHash;       // Current sync committee hash
+    bytes32 startSyncCommitteeHash;  // Start sync committee hash for validation
+}
+```
+
+<CodeGroup>
+```rust Rust
+let call = Call::fulfill {
+    proof,
+    public_values,
+};
+call.dispatch(updater_origin)?;
+```
+
+```typescript TypeScript
+await api.tx.vector
+  .fulfill(proof, publicValues)
+  .signAndSend(updaterAccount);
+```
+</CodeGroup>
+
+**Verification Process:**
+
+```rust
+// 1. Decode public values
+let proof_outputs: ProofOutputs = SolValue::abi_decode(&public_values, true)?;
+
+// 2. Validate progression
+let head = Head::<T>::get();
+let new_head: u64 = proof_outputs.newHead.to();
+ensure!(new_head > head, Error::<T>::SlotBehindHead);
+
+// 3. Verify sync committee continuity
+let current_period = head / config.slots_per_period;
+let current_sync_committee_hash = SyncCommitteeHashes::<T>::get(current_period);
+ensure!(
+    current_sync_committee_hash == H256::from(proof_outputs.startSyncCommitteeHash.0),
+    Error::<T>::SyncCommitteeStartMismatch
+);
+
+// 4. Verify SP1 proof
+let sp1_vk = SP1VerificationKey::<T>::get();
+let is_valid = Groth16Verifier::verify(
+    &proof,
+    &public_values,
+    &format!("{:?}", sp1_vk),
+    &GROTH16_VK_BYTES,
+);
+ensure!(is_valid.is_ok(), Error::<T>::VerificationFailed);
+
+// 5. Update state
+Head::<T>::set(new_head);
+Headers::<T>::insert(new_head, H256::from(proof_outputs.newHeader.0));
+ExecutionStateRoots::<T>::insert(new_head, H256::from(proof_outputs.executionStateRoot.0));
+```
+
+**Events:**
+- `HeadUpdated { slot, finalization_root, execution_state_root }`
+- `SyncCommitteeHashUpdated { period, hash }` - When sync committee is updated
+
+**Errors:**
+- `UpdaterMisMatch` - Caller is not the authorized updater
+- `SlotBehindHead` - New head is not ahead of current head
+- `SyncCommitteeStartMismatch` - Sync committee hash mismatch
+- `VerificationFailed` - SP1 proof verification failed
+- `HeaderRootAlreadySet` - Header already exists for this slot
+- `StateRootAlreadySet` - State root already exists for this slot
+
+---
+
+### execute
+
+Executes a cross-chain message with storage proofs.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be a signed origin
+</ParamField>
+
+<ParamField path="slot" type="u64" required>
+  Ethereum slot containing the message
+</ParamField>
+
+<ParamField path="addr_message" type="AddressedMessage" required>
+  The message to execute
+</ParamField>
+
+<ParamField path="account_proof" type="ValidProof" required>
+  Merkle proof for broadcaster account in state trie
+</ParamField>
+
+<ParamField path="storage_proof" type="ValidProof" required>
+  Merkle proof for message in storage trie
+</ParamField>
+
+**AddressedMessage Structure:**
+
+```rust
+pub struct AddressedMessage {
+    pub message: Message,
+    pub from: H256,              // Source address
+    pub to: H256,                // Destination address
+    pub origin_domain: u32,      // Source chain ID
+    pub destination_domain: u32, // Destination chain ID
+    pub id: u64,                 // Unique message ID
+}
+
+pub enum Message {
+    FungibleToken {
+        asset_id: H256,
+        amount: u128,
+    },
+    ArbitraryMessage(Vec<u8>),
+}
+```
+
+<CodeGroup>
+```rust Rust
+use avail_core::data_proof::{AddressedMessage, Message};
+
+let message = AddressedMessage {
+    message: Message::FungibleToken {
+        asset_id: H256::zero(), // Avail native token
+        amount: 1_000_000_000_000_000_000, // 1 AVAIL
+    },
+    from: sender_eth_address,
+    to: recipient_avail_address,
+    origin_domain: 1, // Ethereum mainnet
+    destination_domain: avail_domain,
+    id: message_id,
+};
+
+Vector::execute(
+    origin,
+    slot,
+    message,
+    account_proof,
+    storage_proof,
+)?;
+```
+
+```typescript TypeScript
+await api.tx.vector
+  .execute(
+    slot,
+    {
+      message: {
+        fungibleToken: {
+          assetId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+          amount: '1000000000000000000'
+        }
+      },
+      from: senderAddress,
+      to: recipientAddress,
+      originDomain: 1,
+      destinationDomain: availDomain,
+      id: messageId
+    },
+    accountProof,
+    storageProof
+  )
+  .signAndSend(account);
+```
+</CodeGroup>
+
+**Verification Process:**
+
+```rust
+// 1. Compute message hash
+let encoded_data = addr_message.abi_encode();
+let message_root = H256(keccak_256(encoded_data.as_slice()));
+
+// 2. Verify preconditions
+// - Message not already executed
+// - Destination domain matches Avail
+// - Origin domain is whitelisted
+// - Source chain not frozen
+
+// 3. Verify account proof
+let root = ExecutionStateRoots::<T>::get(slot);
+let broadcaster = Broadcasters::<T>::get(addr_message.origin_domain);
+let storage_root = get_storage_root(account_proof, broadcaster, root)?;
+
+// 4. Verify storage proof
+let message_id = Uint(U256::from(addr_message.id));
+let mm_idx = Uint(U256::from(MESSAGE_MAPPING_STORAGE_INDEX));
+let slot_key = H256(keccak_256(ethabi::encode(&[message_id, mm_idx]).as_slice()));
+let slot_value = get_storage_value(slot_key, storage_root, storage_proof)?;
+
+ensure!(slot_value == message_root, Error::<T>::InvalidMessageHash);
+
+// 5. Execute message
+match addr_message.message {
+    Message::FungibleToken { asset_id, amount } => {
+        // Transfer from pallet account to recipient
+        T::Currency::transfer(
+            &Self::account_id(),
+            &destination_account_id,
+            amount,
+            ExistenceRequirement::AllowDeath,
+        )?;
+    },
+    Message::ArbitraryMessage(data) => {
+        // Arbitrary message handling
+    },
+}
+```
+
+**Events:**
+- `MessageExecuted { from, to, message_id, message_root }`
+
+**Errors:**
+- `MessageAlreadyExecuted` - Message has already been executed
+- `WrongDestinationChain` - Destination domain doesn't match Avail
+- `UnsupportedOriginChain` - Origin domain not whitelisted
+- `SourceChainFrozen` - Source chain is frozen
+- `CannotGetStorageRoot` - Account proof verification failed
+- `CannotGetStorageValue` - Storage proof verification failed
+- `InvalidMessageHash` - Message hash doesn't match proof
+- `AssetNotSupported` - Asset ID is not supported
+
+---
+
+### send_message
+
+Sends a message from Avail to another chain.
+
+<ParamField path="origin" type="OriginFor<T>" required>
+  Must be a signed origin
+</ParamField>
+
+<ParamField path="message" type="Message" required>
+  The message to send (FungibleToken or ArbitraryMessage)
+</ParamField>
+
+<ParamField path="to" type="H256" required>
+  Destination address on target chain
+</ParamField>
+
+<ParamField path="domain" type="u32" required>
+  Destination chain domain ID (must be whitelisted)
+</ParamField>
+
+<CodeGroup>
+```rust Rust
+// Send tokens
+let message = Message::FungibleToken {
+    asset_id: H256::zero(),
+    amount: 1_000_000_000_000_000_000,
+};
+Vector::send_message(origin, message, recipient_address, ethereum_domain)?;
+
+// Send arbitrary data
+let message = Message::ArbitraryMessage(contract_call_data);
+Vector::send_message(origin, message, contract_address, ethereum_domain)?;
+```
+
+```typescript TypeScript
+// Send tokens
+await api.tx.vector
+  .sendMessage(
+    { fungibleToken: { assetId: '0x00...', amount: '1000000000000000000' } },
+    recipientAddress,
+    1 // Ethereum mainnet
+  )
+  .signAndSend(account);
+
+// Send arbitrary message
+await api.tx.vector
+  .sendMessage(
+    { arbitraryMessage: contractCallData },
+    contractAddress,
+    1
+  )
+  .signAndSend(account);
+```
+</CodeGroup>
+
+**Validation:**
+
+```rust
+// Domain must be whitelisted
+ensure!(WhitelistedDomains::<T>::get().contains(&domain), Error::<T>::DomainNotSupported);
+
+match message {
+    Message::FungibleToken { asset_id, amount } => {
+        // Only Avail native token supported
+        ensure!(asset_id == SUPPORTED_ASSET_ID, Error::<T>::AssetNotSupported);
+        ensure!(amount > 0, Error::<T>::InvalidBridgeInputs);
+        
+        // Lock tokens in pallet account
+        T::Currency::transfer(
+            &who,
+            &Self::account_id(),
+            amount,
+            ExistenceRequirement::KeepAlive,
+        )?;
+    },
+    Message::ArbitraryMessage(data) => {
+        ensure!(!data.is_empty(), Error::<T>::InvalidBridgeInputs);
+    },
+}
+```
+
+**Events:**
+- `MessageSubmitted { from, to, message_type, destination_domain, message_id }`
+
+**Errors:**
+- `DomainNotSupported` - Destination domain not whitelisted
+- `AssetNotSupported` - Asset ID not supported
+- `InvalidBridgeInputs` - Invalid message parameters
+
+---
+
+### Administrative Functions
+
+#### set_updater
+
+Sets the authorized updater account. Root only.
+
+```rust
+pub fn set_updater(origin: OriginFor<T>, updater: H256) -> DispatchResult
+```
+
+#### set_sp1_verification_key
+
+Sets the SP1 verification key hash. Root only.
+
+```rust
+pub fn set_sp1_verification_key(origin: OriginFor<T>, sp1_vk: H256) -> DispatchResult
+```
+
+#### set_broadcaster
+
+Sets the broadcaster contract address for a domain. Root only.
+
+```rust
+pub fn set_broadcaster(
+    origin: OriginFor<T>,
+    broadcaster_domain: u32,
+    broadcaster: H256,
+) -> DispatchResult
+```
+
+#### set_whitelisted_domains
+
+Updates the list of whitelisted domains. Root only.
+
+```rust
+pub fn set_whitelisted_domains(
+    origin: OriginFor<T>,
+    value: BoundedVec<u32, ConstU32<10_000>>,
+) -> DispatchResult
+```
+
+#### set_configuration
+
+Updates slots per period and finality threshold. Root only.
+
+```rust
+pub fn set_configuration(origin: OriginFor<T>, value: Configuration) -> DispatchResult
+```
+
+#### set_sync_committee_hash
+
+Manually sets sync committee hash for a period. Root only.
+
+```rust
+pub fn set_sync_committee_hash(
+    origin: OriginFor<T>,
+    period: u64,
+    hash: H256,
+) -> DispatchResult
+```
+
+#### source_chain_froze
+
+Freezes or unfreezes a source chain. Root only.
+
+```rust
+pub fn source_chain_froze(
+    origin: OriginFor<T>,
+    source_chain_id: u32,
+    frozen: bool,
+) -> DispatchResult
+```
+
+## Events
+
+<ResponseField name="HeadUpdated">
+  <ParamField name="slot" type="u64">
+    The new head slot number
+  </ParamField>
+  <ParamField name="finalization_root" type="H256">
+    The finalized header root
+  </ParamField>
+  <ParamField name="execution_state_root" type="H256">
+    The execution state root
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="SyncCommitteeUpdated">
+  <ParamField name="period" type="u64">
+    The sync committee period
+  </ParamField>
+  <ParamField name="root" type="U256">
+    The Poseidon commitment
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="MessageExecuted">
+  <ParamField name="from" type="H256">
+    Source address
+  </ParamField>
+  <ParamField name="to" type="H256">
+    Destination address
+  </ParamField>
+  <ParamField name="message_id" type="u64">
+    Unique message identifier
+  </ParamField>
+  <ParamField name="message_root" type="H256">
+    Keccak hash of the message
+  </ParamField>
+</ResponseField>
+
+<ResponseField name="MessageSubmitted">
+  <ParamField name="from" type="AccountId">
+    Sender account
+  </ParamField>
+  <ParamField name="to" type="H256">
+    Destination address
+  </ParamField>
+  <ParamField name="message_type" type="MessageType">
+    Type of message (FungibleToken or ArbitraryMessage)
+  </ParamField>
+  <ParamField name="destination_domain" type="u32">
+    Target chain domain
+  </ParamField>
+  <ParamField name="message_id" type="u64">
+    Unique message identifier
+  </ParamField>
+</ResponseField>
+
+## Configuration
+
+```rust
+#[pallet::config]
+pub trait Config: frame_system::Config {
+    type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+    type RuntimeCall: Parameter + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin> + GetDispatchInfo;
+    
+    /// Weight information
+    type WeightInfo: WeightInfo;
+    
+    /// Currency for token transfers
+    type Currency: LockableCurrency<Self::AccountId, Moment = BlockNumberFor<Self>>;
+    
+    /// Time provider
+    type TimeProvider: UnixTime;
+    
+    /// Storage index for messages mapping in broadcaster contract
+    #[pallet::constant]
+    type MessageMappingStorageIndex: Get<u64>;
+    
+    /// Bridge pallet ID
+    #[pallet::constant]
+    type PalletId: Get<PalletId>;
+    
+    /// Avail domain identifier
+    #[pallet::constant]
+    type AvailDomain: Get<u32>;
+}
+```
+
+## Usage Examples
+
+### Relayer: Submit Light Client Update
+
+```rust
+// Step 1: Fetch proof from Ethereum
+let proof_data = fetch_sp1_proof(latest_slot).await?;
+
+// Step 2: Submit to Avail
+let call = Call::fulfill {
+    proof: proof_data.proof,
+    public_values: proof_data.public_values,
+};
+call.dispatch(updater_origin)?;
+
+// Step 3: Monitor events
+// HeadUpdated { slot: 12345, ... }
+```
+
+### Bridge Tokens from Ethereum
+
+```rust
+// User deposits tokens on Ethereum to broadcaster contract
+// Relayer waits for finality, then executes on Avail
+
+let message = AddressedMessage {
+    message: Message::FungibleToken {
+        asset_id: H256::zero(),
+        amount: deposit_amount,
+    },
+    from: eth_sender,
+    to: avail_recipient,
+    origin_domain: 1,
+    destination_domain: avail_domain,
+    id: tx_unique_id,
+};
+
+Vector::execute(
+    relayer_origin,
+    finalized_slot,
+    message,
+    account_proof,
+    storage_proof,
+)?;
+```
+
+### Bridge Tokens to Ethereum
+
+```rust
+// User sends message on Avail
+let message = Message::FungibleToken {
+    asset_id: H256::zero(),
+    amount: 1_000_000_000_000_000_000,
+};
+
+Vector::send_message(
+    user_origin,
+    message,
+    eth_recipient_address,
+    1, // Ethereum mainnet
+)?;
+
+// Relayer monitors MessageSubmitted event
+// Relayer submits proof to Ethereum contract
+```
