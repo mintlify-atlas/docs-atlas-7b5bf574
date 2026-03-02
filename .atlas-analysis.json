@@ -1,0 +1,121 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Avail",
+  "projectDescription": "A modular blockchain node for data availability with Kate commitments and light client support.",
+  "theme": "aspen",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4F46E5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Running a Node",
+            "pages": [
+              "running/manual-setup",
+              "running/docker-setup",
+              "running/networks",
+              "running/configuration"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/runtime",
+              "architecture/consensus",
+              "architecture/data-availability"
+            ]
+          },
+          {
+            "group": "Pallets",
+            "pages": [
+              "pallets/overview",
+              "pallets/data-control",
+              "pallets/vector",
+              "pallets/mandate"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/benchmarking",
+              "operations/monitoring",
+              "operations/security",
+              "operations/troubleshooting"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/building",
+              "development/testing",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Kate RPC",
+            "pages": [
+              "api/kate/overview",
+              "api/kate/query-rows",
+              "api/kate/query-proof",
+              "api/kate/query-data-proof",
+              "api/kate/block-length"
+            ]
+          },
+          {
+            "group": "Runtime APIs",
+            "pages": [
+              "api/runtime/data-avail-api",
+              "api/runtime/kate-api"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "api/cli/commands",
+              "api/cli/flags"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Data Availability with Kate commitments",
+    "Substrate-based blockchain runtime",
+    "BABE/GRANDPA consensus mechanisms",
+    "Custom pallets for DA control and Vector",
+    "Kate RPC for data proofs and queries",
+    "Light client support",
+    "Multi-network support (Mainnet, Turing testnet)",
+    "Docker containerization"
+  ],
+  "publicApiSurface": [
+    "kate_queryRows",
+    "kate_queryProof",
+    "kate_queryMultiProof",
+    "kate_blockLength",
+    "kate_queryDataProof",
+    "avail-node (CLI binary)",
+    "DataControl pallet",
+    "Vector pallet",
+    "Mandate pallet",
+    "da-runtime"
+  ]
+}
